@@ -16,7 +16,9 @@
   server asks the user itself before every write and writes only on their yes. Claude Desktop
   3.1623 doesn't support elicitation, so there the write says the user wasn't asked by the app, and
   `get_settings` reports which applies.
-- The Claude Code plugin also registers the MCP server (needs uv on `PATH`).
+- The Claude Code plugin stays skill-only. Claude Code users can add the MCP server themselves
+  (`claude mcp add`, see the README; needs uv on `PATH`).
+- Releases from 2.0.0 on carry the CI-built `iphone-home-screen.mcpb` as a release asset.
 - Offline tests for the server's tools; CI checks the extension's manifest and packs it.
 
 ## 1.1.0

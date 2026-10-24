@@ -276,6 +276,14 @@ class Settings(ToolsTest):
         self.assertIn("tested by the kit's author: 27.0.1", out)
         self.assertIn('passed both pin tests on this Mac (tested-ios.txt): 28.0', out)
 
+    def test_plugin_stays_skill_only(self):
+        # The MCP server is opt-in for Claude Code (claude mcp add); the plugin must not start it.
+        import json
+        root = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
+        plugin = json.load(open(os.path.join(root, '.claude-plugin', 'plugin.json')))
+        self.assertNotIn('mcpServers', plugin)
+        self.assertEqual(plugin['skills'], ['./.claude/skills/'])
+
     def test_guides(self):
         self.assertIn('Symptom', tools.read_guide('troubleshooting'))
         with self.assertRaises(tools.Refused):
@@ -356,6 +364,10 @@ class Confirmation(ToolsTest):
             self.assertTrue(r.is_error, answer)
             self.assertIn('did not confirm', r.content[0].text)
             self.assertEqual(len(shown), 1)
+        # Malformed "accepts": empty content (write defaults to false), and no content at all.
+        for answer in (('accept', {}), ('accept', None)):
+            r, shown = self.call(answer)
+            self.assertTrue(r.is_error, answer)
         self.assertEqual(self.calls, [])
 
     def test_settings_say_whether_the_app_can_ask(self):

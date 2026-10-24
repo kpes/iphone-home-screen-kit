@@ -26,9 +26,10 @@ Install it once, for your user, and it's available in every session. You don't n
 project folder: your settings and data live in `~/iphone-home-screen/`, wherever you start.
 
 ### Claude desktop app: the regular chat (extension)
-1. Get `iphone-home-screen.mcpb`: build it from this repo with
-   `npx @anthropic-ai/mcpb pack . dist/iphone-home-screen.mcpb` (needs Node.js), or download it
-   from a [release](https://github.com/kpes/iphone-home-screen-kit/releases) once one is published.
+1. Download `iphone-home-screen.mcpb` from the
+   [v2.0.0 release](https://github.com/kpes/iphone-home-screen-kit/releases/tag/v2.0.0) (or a later
+   one), or build it from this repo with `npx @anthropic-ai/mcpb pack . dist/iphone-home-screen.mcpb`
+   (needs Node.js).
 2. Double-click it, or drag it onto **Settings → Extensions** in the Claude app, and choose
    **Install**. The app fetches the extension's Python dependencies (pymobiledevice3 and the MCP
    SDK) with uv, which takes a minute or two the first time; it uses your `uv` if you have one and
@@ -56,10 +57,16 @@ Or from your shell: `claude plugin marketplace add kpes/iphone-home-screen-kit`,
 `claude plugin install iphone-home-screen@iphone-home-screen-kit`. To update later, run
 `/plugin marketplace update iphone-home-screen-kit`.
 
-The plugin brings the skill and the same MCP server as the desktop extension (its tools appear as
-`mcp__iphone-home-screen__*`). The server needs [uv](https://docs.astral.sh/uv/) on your `PATH`;
-without it the skill still works on its own. Its first start downloads its dependencies, so if
-`/mcp` shows it failed the first time, reconnect it there.
+The plugin brings the skill only. Claude Code runs the scripts itself, so it doesn't need the MCP
+server. **Optional:** to use the desktop extension's tools in Claude Code too (they appear as
+`mcp__iphone-home-screen__*`), clone the repo and add the server yourself. It needs
+[uv](https://docs.astral.sh/uv/) on your `PATH`, and its first start downloads its dependencies.
+```bash
+git clone https://github.com/kpes/iphone-home-screen-kit ~/iphone-home-screen-kit
+claude mcp add --scope user iphone-home-screen -- uv run --quiet --directory ~/iphone-home-screen-kit server/server.py
+```
+Remove it with `claude mcp remove --scope user iphone-home-screen`; update it with `git -C
+~/iphone-home-screen-kit pull`.
 
 **Without the plugin system**, copy the skill folder into your personal skills:
 ```bash
@@ -134,8 +141,8 @@ The skill, in `.claude/skills/iphone-home-screen/`:
 | `references/` | `commands.md`, `how-it-works.md`, `troubleshooting.md` |
 | `assets/` | Example `config.json`, an example pin file, and an excerpt of iOS's pin format |
 
-`.claude-plugin/` makes the repo a Claude Code plugin and marketplace whose one skill is that folder,
-plus the MCP server. The repo also has `tests/` (offline tests, no phone needed:
+`.claude-plugin/` makes the repo a Claude Code plugin and marketplace whose one skill is that folder
+(the MCP server is opt-in, see Install). The repo also has `tests/` (offline tests, no phone needed:
 `python3 -B -m unittest discover -s tests`; `uv run python -B -m unittest discover -s tests` also
 tests the MCP layer) and a CI workflow that runs them, the official `skills-ref validate`, and the
 extension's manifest check and pack.
@@ -176,5 +183,14 @@ see [SECURITY.md](SECURITY.md).
 | iOS | Status |
 |---|---|
 | 27.0.1 | Tested: app and folder pins confirmed |
+
+## Releasing (maintainers)
+Bump the version in `.claude-plugin/plugin.json`, `SKILL.md`, `manifest.json`, `pyproject.toml` and
+`server/server.py`, and add a CHANGELOG entry. After merging, download the `iphone-home-screen.mcpb`
+that CI built from the merge commit (the `mcp-server` job's artifact), check it installs, and attach
+it to the release:
+```bash
+gh release create vX.Y.Z --title vX.Y.Z --notes-file <notes> iphone-home-screen.mcpb
+```
 
 Built with [pymobiledevice3](https://github.com/doronz88/pymobiledevice3).

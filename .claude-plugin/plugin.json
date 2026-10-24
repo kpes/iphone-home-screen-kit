@@ -19,17 +19,5 @@
   ],
   "skills": [
     "./.claude/skills/"
-  ],
-  "mcpServers": {
-    "iphone-home-screen": {
-      "command": "uv",
-      "args": [
-        "run",
-        "--quiet",
-        "--directory",
-        "${CLAUDE_PLUGIN_ROOT}",
-        "server/server.py"
-      ]
-    }
-  }
+  ]
 }
