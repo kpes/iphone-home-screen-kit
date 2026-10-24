@@ -15,7 +15,7 @@ python3 -I -B scripts/rank.py --archive            # keep a copy of usage data (
 python3 -I -B scripts/rank.py "$D/data/ranking-2026-11-01.csv" --lookup
 "$D/pmd/bin/python" -B scripts/homescreen.py dump "$D/layouts/2026-11-01-before.plist"
 python3 -I -B scripts/arrange.py "$D/layouts/2026-11-01-before.plist" "$D/layouts/2026-11-01-new.plist" 1 \
-    <widget bundle ID> <app or folder> ...          # set page 1 to exactly these, in screen order
+    <widget> <app or folder> ...                    # set page 1 to exactly these, in screen order
 python3 -I -B scripts/push.py --check "$D/layouts/2026-11-01-before.plist" "$D/layouts/2026-11-01-new.plist" \
     --pins "$D/pins.txt"
 "$D/pmd/bin/python" -B scripts/push.py "$D/layouts/2026-11-01-new.plist" "$D/layouts/2026-11-01-after.plist" \
@@ -28,14 +28,16 @@ python3 -I -B scripts/push.py --check "$D/layouts/2026-11-01-before.plist" "$D/l
 - **`homescreen.py`**: `show` prints the phone's model, iOS version (and whether it's tested) and grid,
   then the dock and pages 1–2. `dump OUT` saves the full layout. Both are read-only. They talk to the
   first iPhone on USB, so connect one at a time.
-- **`arrange.py`** takes apps by bundle ID and folders by name, with or without brackets. Page 1
+- **`arrange.py`** takes apps by bundle ID, folders by name (with or without brackets) and widgets as `show`
+  prints them (`<bundle ID>#<ID>`). Page 1
   is the first home screen page; page 0 (the dock) is refused, and one past the last page adds a page. It takes an app out of a
   folder when the app is listed. Displaced items go to the front of the next page. It stops if a
   page would overflow 24 slots (`--grid 4x5` for another grid).
 - **`push.py --check`** confirms that no app or widget is lost, added or duplicated (folders are
   reported separately), that every page fits, and that the dock is unchanged. With `--pins` it also
   validates the pins: real pages and slots, no slot or item twice, nothing left without room, no
-  widget pushed aside, and no pinned widget off the grid or over another pin. Pass `--grid 4x5` if `show` reports a grid other than 4×6.
+  widget pushed aside, no pinned widget off the grid or over another pin, and no
+  widget starting on row 2, 4 or 6 (iOS would move it). Pass `--grid 4x5` if `show` reports a grid other than 4×6.
 - **`push.py`** writes, reads back and compares. It needs exactly one of `--pins FILE` (format:
   `assets/pins.example.txt`), `--pin PAGE:ITEM:SLOT` (repeatable) or `--no-pins`, and prints
   `pins page N: CONFIRMED`, `FAILED` or `not provable` per pinned page. On each pinned page it also

@@ -163,6 +163,13 @@ class Commands(unittest.TestCase):
         tools = next(i for i in st[1] if i.get('displayName') == 'Tools')
         self.assertEqual([a['bundleIdentifier'] for a in tools['iconLists'][0]], ['com.example.t2'])
 
+    def test_arrange_takes_a_widget_as_show_prints_it(self):
+        for n, w in enumerate(('com.example.weather.widget#W1', 'W1', 'com.example.weather.widget')):
+            out = os.path.join(self.d, f'w{n}.plist')
+            r = run('arrange.py', self.before, out, '2', w, 'com.example.b1')
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(plistlib.load(open(out, 'rb'))[2][0].get('displayIdentifier'), 'W1')
+
 
 class IosGate(unittest.TestCase):
     def test_a_version_needs_both_app_and_folder_passes(self):
@@ -238,10 +245,20 @@ class WidgetPins(unittest.TestCase):
         st = [[], [widget('W1')] + [app(f'com.example.a{i}') for i in range(1, 13)]]
         pins = [(1, f'com.example.a{i}', s) for i, s in zip(range(6, 13), (16, 17, 19, 20, 21, 22, 23))]
         self.assertEqual(push.with_widget_pins(st, pins)[len(pins):], [(1, 'W1', 0)])
-        # The widget listed after one icon: its slot follows the list (row 2), not the top.
-        st[1] = [st[1][1], st[1][0]] + st[1][2:]
-        self.assertEqual(push.with_widget_pins(st, pins)[len(pins):], [(1, 'W1', 4)])
         self.assertEqual(push.with_widget_pins(st, []), [])   # no pins: nothing added
+
+    def test_widget_off_a_row_pair_is_refused(self):
+        # Listed after one icon, or pinned to row 2, a widget showed on row 1 instead: refuse both.
+        st = [[], [app('com.example.a1'), widget('W1')] + [app(f'com.example.a{i}') for i in range(2, 9)]]
+        errors = push.validate_pins(st, [(1, 'com.example.a8', 23)])
+        self.assertTrue(any('row 2' in e for e in errors), errors)
+        errors = push.validate_pins(layout(), [(1, 'W1', 4)])
+        self.assertTrue(any('row 2' in e for e in errors), errors)
+        page = [widget('S1', 'small')] + [app(f'com.example.a{i}') for i in range(1, 4)]
+        self.assertTrue(any('column 2' in e for e in push.validate_pins([[], page], [(1, 'S1', 1)])))
+        # After a whole pair of rows (8 icons) is fine.
+        page = [app(f'com.example.a{i}') for i in range(1, 9)] + [widget('W1'), app('com.example.z')]
+        self.assertEqual(push.validate_pins([[], page], [(1, 'com.example.z', 23)]), [])
 
     def test_widget_pin_is_keyed_by_display_identifier(self):
         d = push.with_pins(layout(), [(1, 'W1', 0)])

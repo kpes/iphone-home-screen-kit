@@ -4,7 +4,8 @@
 
 PAGE 1 is the first home screen page (0 is the dock). ITEM is a bundle ID or a folder's
 name, with or without the brackets `homescreen.py show` prints ("Utilities" or
-"[Utilities]"). An app inside a folder is taken out of it, even when that folder is
+"[Utilities]"). A widget can be given as `show` prints it (bundle ID#ID), by its ID, or by
+its bundle ID. An app inside a folder is taken out of it, even when that folder is
 also in the list. Items displaced from PAGE go to the front of the next page. Emptied
 folders and pages are dropped. Stops if the page would hold more than 24 slots.
 """
@@ -16,6 +17,14 @@ WIDGET_SLOTS = {'small': 4, 'medium': 8, 'large': 16, 'extraLarge': 16}
 
 def key(it):
     return it.get('bundleIdentifier') or it.get('displayName')
+
+
+def names(it):
+    """Every way ITEM can be given: a widget also by `show`'s bundle ID#ID, or by its ID alone."""
+    if it.get('elementType') == 'widget':
+        ident = it.get('displayIdentifier')
+        return [f"{it.get('bundleIdentifier')}#{ident}", ident, key(it)]
+    return [key(it)]
 
 
 def is_folder(it):
@@ -47,8 +56,8 @@ def main(src, dst, page, *items):
             if is_folder(it):
                 # Look inside first, so a listed app can leave a folder that is itself listed.
                 it['iconLists'] = [l for l in (strip(l) for l in it['iconLists']) if l]
-            k = key(it)
-            if k in wanted and k not in pulled:
+            k = next((n for n in names(it) if n in wanted and n not in pulled), None)
+            if k is not None:
                 pulled[k] = it
                 continue
             if is_folder(it) and not it['iconLists']:

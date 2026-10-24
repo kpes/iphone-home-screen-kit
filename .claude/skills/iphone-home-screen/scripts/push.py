@@ -98,6 +98,14 @@ def fits(slot, w, h, grid):
     return c + w <= cols and r + h <= rows
 
 
+def aligned(slot, cols):
+    """Can a widget start here? SpringBoard puts widgets on row pairs (rows 1, 3, 5... counting
+    from 1): a medium widget pinned to row 2 showed on row 1 instead (iOS 27.0.1). Small widgets
+    are assumed to take the left or right half of a row pair (untested)."""
+    r, c = divmod(slot, cols)
+    return r % 2 == 0 and c % 2 == 0
+
+
 def page_slots(page, cols):
     return sum(w * h for w, h in (shape(i, cols) for i in page))
 
@@ -178,8 +186,16 @@ def validate_pins(state, pins, grid=DEFAULT_GRID, check_widgets=True):
                 errors.append(f'page {page}: with these pins, nowhere left for {missing} (a pin under a widget?)')
             natural = positions(state[page], {}, grid)
             for it in state[page]:
-                if (is_widget(it) and key(it) not in page_pins and name(it) in placed
-                        and placed[name(it)] != natural.get(name(it))):
+                if not is_widget(it) or name(it) not in placed:
+                    continue
+                r, c = divmod(placed[name(it)], cols)
+                if not aligned(placed[name(it)], cols):
+                    errors.append(f'page {page}: the widget {name(it)} would start on row {r + 1}'
+                                  + (f', column {c + 1}' if c % 2 else '') + ', but iOS starts widgets only on '
+                                  'rows 1, 3, 5 (columns 1 or 3) and would move it: list it first, or after '
+                                  'whole pairs of rows, or pin it to such a slot')
+                    continue
+                if key(it) not in page_pins and placed[name(it)] != natural.get(name(it)):
                     errors.append(f'page {page}: a pin sits where the widget {name(it)} goes (slot '
                                   f'{natural.get(name(it))}), which would push it to slot {placed[name(it)]}')
     return errors
