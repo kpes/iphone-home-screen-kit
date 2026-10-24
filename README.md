@@ -26,22 +26,21 @@ Install it once, for your user, and it's available in every session. You don't n
 project folder: your settings and data live in `~/iphone-home-screen/`, wherever you start.
 
 ### Claude desktop app: the regular chat (extension)
-1. Download `iphone-home-screen.mcpb` from the
-   [latest release](https://github.com/kpes/iphone-home-screen-kit/releases/latest), or build it
-   yourself (below).
+1. Get `iphone-home-screen.mcpb`: build it from this repo with
+   `npx @anthropic-ai/mcpb pack . dist/iphone-home-screen.mcpb` (needs Node.js), or download it
+   from a [release](https://github.com/kpes/iphone-home-screen-kit/releases) once one is published.
 2. Double-click it, or drag it onto **Settings → Extensions** in the Claude app, and choose
    **Install**. The app fetches the extension's Python dependencies (pymobiledevice3 and the MCP
    SDK) with uv, which takes a minute or two the first time; it uses your `uv` if you have one and
    downloads its own otherwise. Nothing else to install.
 3. Connect and unlock your iPhone, then say **"show my home screen"** in a new chat.
 
-The extension asks before each write to your phone (Claude Desktop shows a permission prompt for
-tools that change things), and the server itself refuses a write unless that exact layout and those
-pins passed the offline check moments before (a one-time confirmation token). Ranking by usage also
-needs Full Disk Access for the Claude app (see Requirements). Settings → Extensions →
+Writing to the phone is a separate tool, marked as destructive, so the Claude app can ask you
+before each use; keep it on "ask" rather than "always allow". The server itself refuses a write
+unless that exact layout and those pins passed the offline check in the last 10 minutes (a one-time
+confirmation token), and Claude is told to show you the change and wait for your yes. Ranking by
+usage also needs Full Disk Access for the Claude app (see Requirements). Settings → Extensions →
 iPhone Home Screen lets you change the data folder.
-
-To build the `.mcpb` from this repo: `npx @anthropic-ai/mcpb pack . dist/iphone-home-screen.mcpb`.
 
 ### Claude Code: terminal, or the Code tab in the Claude desktop app (recommended)
 Install it as a plugin. In Claude Code, run:
@@ -55,7 +54,8 @@ Or from your shell: `claude plugin marketplace add kpes/iphone-home-screen-kit`,
 
 The plugin brings the skill and the same MCP server as the desktop extension (its tools appear as
 `mcp__iphone-home-screen__*`). The server needs [uv](https://docs.astral.sh/uv/) on your `PATH`;
-without it the skill still works on its own.
+without it the skill still works on its own. Its first start downloads its dependencies, so if
+`/mcp` shows it failed the first time, reconnect it there.
 
 **Without the plugin system**, copy the skill folder into your personal skills:
 ```bash

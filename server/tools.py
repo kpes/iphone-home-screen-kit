@@ -11,7 +11,7 @@ exact files and pins that passed the offline check, is used once, and expires af
 Files: every layout lives in <data folder>/layouts, and tools take bare file names, never paths.
 New files get dated names and nothing is ever overwritten.
 """
-import contextlib, datetime, hashlib, io, json, os, plistlib, re, secrets, subprocess, sys, threading, time
+import contextlib, datetime, hashlib, json, os, plistlib, re, secrets, subprocess, sys, threading, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SKILL = os.path.join(ROOT, '.claude', 'skills', 'iphone-home-screen')
@@ -96,14 +96,12 @@ def phone():
         PHONE.release()
 
 
-def quiet(fn, *args):
-    """Call a script function that prints or sys.exit()s; returns (result, what it printed)."""
-    out = io.StringIO()
-    with contextlib.redirect_stdout(out):
-        try:
-            return fn(*args), out.getvalue()
-        except SystemExit as e:
-            raise Refused(e.code if isinstance(e.code, str) else out.getvalue().strip() or 'refused')
+def no_exit(fn, *args):
+    """Call a script function that refuses with sys.exit(message) (it must not print: stdout is MCP's)."""
+    try:
+        return fn(*args)
+    except SystemExit as e:
+        raise Refused(str(e.code))
 
 
 def load(path):
@@ -268,7 +266,7 @@ def pin_specs(pins, no_pins):
     if not specs and not no_pins:
         raise Refused('no pins given. Writing without pins closes every gap on every page. Pass the pins to keep '
                       '(show_layout lists the ones in effect), or no_pins=true if packing is really wanted.')
-    quiet(push.parse_pins, specs)  # refuses malformed pins with push.py's own message
+    no_exit(push.parse_pins, specs)  # refuses malformed pins with push.py's own message
     return specs
 
 
@@ -294,7 +292,7 @@ def check_layout(base, new, pins=None, no_pins=False, untested_ios_ok=False, gri
     for t in [t for t, v in PENDING.items() if v['expires'] < time.time()]:
         del PENDING[t]
     PENDING[token] = {'base': b, 'new': n, 'base_sha': sha(b), 'new_sha': sha(n), 'pins': specs,
-                      'untested_ios_ok': bool(untested_ios_ok), 'expires': time.time() + TOKEN_TTL}
+                      'untested_ios_ok': bool(untested_ios_ok), 'grid': g, 'expires': time.time() + TOKEN_TTL}
     pages_after = len(after) - 1
     preview = layout_text(after, set(changed)) if changed else '(no page changes; pins only)'
     return (f'{out}\n\nPages that change ({pages_after} pages in all):\n{preview}\n\n'
@@ -321,11 +319,27 @@ def write_layout(confirm_token):
     with phone():
         code, out = run_script('push.py', *args, timeout=180)
     m = re.search(r'saved the layout from before this write: (\S+\.plist)', out)
-    undo = (f'\n\nTo undo this write: restore_snapshot with {os.path.basename(m[1])}.' if m else '')
+    undo = undo_note(m[1], p['grid']) if m else ''
     if code != 0:
         raise Refused(out + undo + '\n\nThe write was refused or did not come back as sent. Read the lines above; '
                       'read_guide("troubleshooting") explains each message.')
     return out + f'\n\nRead back and saved as {os.path.basename(after)}.' + undo
+
+
+def undo_note(snap, grid):
+    """How to undo a write: restore_snapshot with the snapshot push.py saved, if that would pass the check."""
+    pf = snap[:-len('.plist')] + '.pins.txt'
+    try:
+        specs = no_exit(push.read_pins_file, pf) if os.path.exists(pf) else []
+        cols, rows = (int(x) for x in grid.split('x'))
+        ok = push.compare(load(snap), load(snap), (cols, rows), no_exit(push.parse_pins, specs), quiet=True)
+    except (Refused, OSError, ValueError):
+        ok = False
+    if ok:
+        return f'\n\nTo undo this write: restore_snapshot with {os.path.basename(snap)}.'
+    return (f'\n\nThe layout from before this write is saved as {os.path.basename(snap)}, but restoring it with '
+            'its pins would not pass the check as read (the phone lists a widget after pinned items). To undo, '
+            'rebuild the changed pages from it with build_page, widget first, and check and write as usual.')
 
 
 def restore_snapshot(snapshot, pins_file=None, untested_ios_ok=False):
@@ -335,7 +349,7 @@ def restore_snapshot(snapshot, pins_file=None, untested_ios_ok=False):
         pf = resolve(pins_file, '.txt')
     else:
         pf = s[:-len('.plist')] + '.pins.txt'
-    specs = quiet(push.read_pins_file, pf)[0] if os.path.exists(pf) else []
+    specs = no_exit(push.read_pins_file, pf) if os.path.exists(pf) else []
     note = (f'Restoring with the pins in {os.path.basename(pf)}.' if specs else
             f'No pins file for {snapshot}, so this restore has no pins: pages pack to the left and any gaps close. '
             'If the user had gaps, pass the matching pins_file (see list_snapshots).')

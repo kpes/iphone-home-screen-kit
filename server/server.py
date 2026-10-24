@@ -36,6 +36,8 @@ To change the layout, every time:
    each call writes a new file and the next call builds on it.
 3. check_layout(base=the snapshot, new=the built file, pins=[...]). It must pass. Slots count
    from 0, left to right, top to bottom (0-23 on a 4x6 grid); a medium widget fills rows 1-2.
+   "nowhere left for <widget>" on a page you didn't change means the phone lists that widget
+   after pinned items: rebuild the page with build_page, widget first, in the user's order.
 4. Show the user the pages and pins check_layout printed, and get a clear yes.
 5. write_layout(confirm_token). Report what it printed: lost and added must be [], every pinned
    page must say CONFIRMED. FAILED: stop and read_guide("troubleshooting"). "not provable": ask

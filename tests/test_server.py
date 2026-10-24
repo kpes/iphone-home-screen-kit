@@ -38,8 +38,14 @@ class ToolsTest(unittest.TestCase):
         with open(os.path.join(self.layouts, name), 'rb') as f:
             return plistlib.load(f)
 
-    def fake_phone(self, code=0, out='saved the layout from before this write: /x/y-after.autosave-before-1.plist'):
-        """Replace the phone scripts (homescreen.py, push.py writes); offline scripts still run for real."""
+    def fake_phone(self, code=0, snapshot='y-after.autosave-before-1.plist', out='pins page 1: CONFIRMED'):
+        """Replace the phone scripts (homescreen.py, push.py writes); offline scripts still run for real.
+        A write "saves" SNAPSHOT (layout() unless the test saved one) like push.py does."""
+        path = os.path.join(self.layouts, snapshot)
+        if not os.path.exists(path):
+            self.save(snapshot, layout())
+        out = f'saved the layout from before this write: {path}\n{out}'
+
         def run(script, *args, timeout=120):
             if script == 'arrange.py' or args[:1] == ('--check',):
                 return self.real_run(script, *args, timeout=timeout)
@@ -175,12 +181,25 @@ class Writing(ToolsTest):
 
     def test_a_failed_write_is_an_error_with_the_undo(self):
         t = self.checked(pins=PINS)
-        self.fake_phone(code=1, out='saved the layout from before this write: /x/z.autosave-before-2.plist\n'
-                                    'pins page 1: FAILED, read back as sent (pins ignored)')
+        self.fake_phone(code=1, snapshot='z.autosave-before-2.plist',
+                        out='pins page 1: FAILED, read back as sent (pins ignored)')
         with self.assertRaises(tools.Refused) as e:
             tools.write_layout(t)
         self.assertIn('FAILED', str(e.exception))
         self.assertIn('restore_snapshot with z.autosave-before-2.plist', str(e.exception))
+
+
+    def test_no_undo_promise_when_the_snapshot_would_not_pass(self):
+        # A live read can list a widget after pinned items; with its pins it then fails the check.
+        st = layout()
+        st[1] = st[1][1:] + st[1][:1]
+        self.save('w.autosave-before-3.plist', st)
+        open(os.path.join(self.layouts, 'w.autosave-before-3.pins.txt'), 'w').write('1:com.example.a1:11\n1:com.example.a2:19\n')
+        t = self.checked(pins=PINS)
+        self.fake_phone(snapshot='w.autosave-before-3.plist')
+        out = tools.write_layout(t)
+        self.assertNotIn('restore_snapshot with', out)
+        self.assertIn('build_page, widget first', out)
 
 
 class Restoring(ToolsTest):
