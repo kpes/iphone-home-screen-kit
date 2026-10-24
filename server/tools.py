@@ -32,7 +32,10 @@ class Refused(Exception):
 
 def home_dir():
     # Read on every call, not at import, so a changed setting takes effect without a restart.
-    return os.path.expanduser(os.environ.get('IPHONE_HOME_SCREEN_DIR') or '~/iphone-home-screen')
+    # Claude Desktop passes the manifest's default "${HOME}/iphone-home-screen" unexpanded until the
+    # user saves the extension's settings, and a relative path would land in the extension's folder.
+    d = os.path.expanduser(os.path.expandvars(os.environ.get('IPHONE_HOME_SCREEN_DIR') or ''))
+    return d if os.path.isabs(d) else os.path.expanduser('~/iphone-home-screen')
 
 
 def layouts_dir():

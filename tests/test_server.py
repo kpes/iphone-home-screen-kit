@@ -72,6 +72,15 @@ class Files(ToolsTest):
                 tools.resolve(bad)
         self.assertEqual(tools.resolve('base.plist'), os.path.realpath(os.path.join(self.layouts, 'base.plist')))
 
+    def test_data_folder_setting_is_expanded(self):
+        # Claude Desktop passes the manifest default unexpanded; anything relative falls back to ~.
+        default = os.path.expanduser('~/iphone-home-screen')
+        for value, want in (('${HOME}/iphone-home-screen', default), ('~/iphone-home-screen', default),
+                            ('relative/dir', default), ('', default), (self.home, self.home)):
+            os.environ['IPHONE_HOME_SCREEN_DIR'] = value
+            self.assertEqual(tools.home_dir(), want, value)
+        os.environ['IPHONE_HOME_SCREEN_DIR'] = self.home
+
     def test_new_files_never_overwrite(self):
         a, b = tools.new_path('x'), None
         open(a, 'w').close()
