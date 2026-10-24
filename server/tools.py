@@ -296,7 +296,8 @@ def check_layout(base, new, pins=None, no_pins=False, untested_ios_ok=False, gri
     for t in [t for t, v in PENDING.items() if v['expires'] < time.time()]:
         del PENDING[t]
     PENDING[token] = {'base': b, 'new': n, 'base_sha': sha(b), 'new_sha': sha(n), 'pins': specs,
-                      'untested_ios_ok': bool(untested_ios_ok), 'grid': g, 'expires': time.time() + TOKEN_TTL}
+                      'untested_ios_ok': bool(untested_ios_ok), 'grid': g, 'expires': time.time() + TOKEN_TTL,
+                      'changed': changed, 'pages': len(after) - 1}
     pages_after = len(after) - 1
     preview = layout_text(after, set(changed)) if changed else '(no page changes; pins only)'
     return (f'{out}\n\nPages that change ({pages_after} pages in all):\n{preview}\n\n'
@@ -307,15 +308,51 @@ def check_layout(base, new, pins=None, no_pins=False, untested_ios_ok=False, gri
 
 
 def write_layout(confirm_token):
-    """push.py NEW AFTER with the pins check_layout approved; it reads back and verifies."""
-    p = PENDING.pop((confirm_token or '').strip(), None)
+    """Write what check_layout approved (the token-only path; server.py asks the user in between)."""
+    return push_write(take_token(confirm_token))
+
+
+def take_token(confirm_token):
+    """The write check_layout approved for this token, used up: even if the write then doesn't happen
+    (the user says no), a new check is needed for a new token."""
+    p = peek_token(confirm_token)
+    del PENDING[confirm_token.strip()]
+    return p
+
+
+def peek_token(confirm_token):
+    """The write check_layout approved for this token, if it's still good; the token stays usable."""
+    p = PENDING.get((confirm_token or '').strip())
     if not p:
         raise Refused('unknown or already used confirmation token: run check_layout first')
     if time.time() > p['expires']:
         raise Refused('the confirmation token expired: run check_layout again (and confirm with the user)')
+    unchanged(p)
+    return p
+
+
+def unchanged(p):
     for k in ('base', 'new'):
         if not os.path.exists(p[k]) or sha(p[k]) != p[k + '_sha']:
             raise Refused(f'{os.path.basename(p[k])} changed since check_layout: run check_layout again')
+
+
+def confirmation(p):
+    """What the user is asked, by the app itself, before a write."""
+    restore = p['base'] == p['new']
+    pages = ', '.join(map(str, p['changed'])) or 'none (pins only)'
+    pins = (f"{len(p['pins'])} pins: apps and folders stay in their slots, with the blank spaces kept"
+            if p['pins'] else 'NO pins: every page packs to the left and any blank spaces close')
+    return ((f"Put back the saved layout {os.path.basename(p['new'])} on your iPhone?" if restore else
+             f"Write a new home screen layout to your iPhone?\n\nPages that change: {pages} (of {p['pages']})")
+            + f'\n{pins}.'
+            + ('\nThis is a pin test on an iOS version not tested yet.' if p['untested_ios_ok'] else '')
+            + "\n\nThe phone's current layout is saved first, so this can be undone.")
+
+
+def push_write(p):
+    """push.py NEW AFTER with the approved pins; it checks the live layout, writes, reads back and verifies."""
+    unchanged(p)  # again: the user may have taken a while to answer
     after = new_path('after')
     args = [p['new'], after] + ([a for s in p['pins'] for a in ('--pin', s)] if p['pins'] else ['--no-pins'])
     if p['untested_ios_ok']:

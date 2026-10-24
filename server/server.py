@@ -7,10 +7,13 @@ The tools themselves are in tools.py; this file only describes them to MCP clien
 import functools, os, sys
 from typing import Annotated, Optional
 
-from mcp.server.mcpserver import MCPServer
+import anyio
+from mcp.server.elicitation import ElicitationResult
+from mcp.server.mcpserver import Context, MCPServer
+from mcp.server.mcpserver.resolve import Elicit, Resolve
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import tools  # noqa: E402
@@ -40,7 +43,9 @@ To change the layout, every time:
    (the part after #) at its top-left slot. Widgets start only on rows 1, 3 and 5; on a pinned
    page, writes pin each widget where the layout puts it.
 4. Show the user the pages and pins check_layout printed, and get a clear yes.
-5. write_layout(confirm_token). Report what it printed: lost and added must be [], every pinned
+5. write_layout(confirm_token). Where the app can, it asks the user itself to confirm; if they
+   don't say yes there, nothing is written. If it starts with "NOTE: this app cannot show", the
+   app couldn't ask: tell the user. Report what it printed: lost and added must be [], every pinned
    page must say CONFIRMED. FAILED: stop and read_guide("troubleshooting"). "not provable": ask
    the user to look at that page. Tell the user the snapshot it saved, so they can undo with
    restore_snapshot.
@@ -128,14 +133,53 @@ def check_layout(base: Annotated[str, Field(description='The show_layout snapsho
     return tools.check_layout(base, new, pins, no_pins, untested_ios_ok, grid)
 
 
-@tool(ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=False),
-      'Write the layout to the iPhone')
-def write_layout(confirm_token: Annotated[str, Field(description='The token check_layout returned, after the user said yes')]) -> str:
+class Confirm(BaseModel):
+    write: bool = Field(default=False, title='Yes, write it to my iPhone')
+
+
+NO_PROMPT = ('NOTE: this app cannot show the server\'s own confirmation prompt (MCP elicitation), so the user '
+             'was not asked by the app before this write: it relied on the confirmation token and on Claude '
+             'asking first. Tell the user.\n\n')
+
+
+def ask_user(confirm_token: str, ctx: Context):
+    """Resolver for write_layout: ask the user in the app (MCP elicitation), on either protocol version
+    (a mid-call request before 2026-07-28, an input-required round after). None when the app can't ask."""
+    try:
+        pending = tools.peek_token(confirm_token)  # refuse a bad token before asking anything
+    except tools.Refused as e:
+        raise ToolError(str(e))
+    return Elicit(tools.confirmation(pending), Confirm) if can_ask(ctx) else None
+
+
+@mcp.tool(title='Write the layout to the iPhone',
+          annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=False))
+async def write_layout(confirm_token: Annotated[str, Field(description='The token check_layout returned, after the user said yes')],
+                       answer: Annotated[ElicitationResult[Confirm], Resolve(ask_user)]) -> str:
     """Write the layout and pins that check_layout approved to the iPhone, then read it back and verify.
-    Refuses if the phone changed since the snapshot (apps installed or removed, dock changed), if it isn't
-    an iPhone, or if pins are used on an untested iOS version. Saves the phone's previous layout first,
-    so the write can be undone with restore_snapshot."""
-    return tools.write_layout(confirm_token)
+    Where the app supports it, the server first asks the user itself to confirm, in the app; if they don't
+    say yes, nothing is written. Refuses if the phone changed since the snapshot (apps installed or removed,
+    dock changed), if it isn't an iPhone, or if pins are used on an untested iOS version. Saves the phone's
+    previous layout first, so the write can be undone with restore_snapshot."""
+    try:
+        pending = tools.take_token(confirm_token)
+        # The framework hands a resolver's plain value over as an accepted answer: data None = not asked.
+        # A real answer that was accepted always carries a validated Confirm.
+        asked = not (answer.action == 'accept' and answer.data is None)
+        if asked and not (answer.action == 'accept' and answer.data.write):
+            raise tools.Refused('the user did not confirm the write in the app, so nothing was written. '
+                                'Ask what they want to change; a new write needs check_layout again.')
+        notice = '' if asked else NO_PROMPT
+        return notice + await anyio.to_thread.run_sync(tools.push_write, pending)
+    except tools.Refused as e:
+        raise ToolError(str(e))
+
+
+def can_ask(ctx):
+    """Can the client show a form elicitation? An empty elicitation capability means form (MCP spec)."""
+    caps = ctx.client_capabilities
+    e = caps.elicitation if caps else None
+    return e is not None and (e.form is not None or e.url is None)
 
 
 @tool(READ, 'Prepare a restore')
@@ -175,10 +219,15 @@ def rank_apps(since: Annotated[Optional[str], Field(description='YYYY-MM-DD')] =
 
 
 @tool(READ, 'Read settings')
-def get_settings() -> str:
-    """Show the data folder, config.json, the user's saved layout plan (layout.md), the pins in effect and
-    the iOS versions that passed the pin tests on this Mac."""
-    return tools.get_settings()
+def get_settings(ctx: Context) -> str:
+    """Show the data folder, config.json, the user's saved layout plan (layout.md), the pins in effect,
+    the iOS versions that passed the pin tests, and whether this app can show the confirmation prompt
+    before a write."""
+    return tools.get_settings() + '\n\n--- confirmation prompt before writes:\n' + (
+        'this app can show it: write_layout asks the user in the app, and writes only on their yes'
+        if can_ask(ctx) else
+        "this app can't show it (no MCP elicitation): writes rely on the confirmation token and on Claude "
+        'asking the user first')
 
 
 @tool(LOCAL, 'Save settings')

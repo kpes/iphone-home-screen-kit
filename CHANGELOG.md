@@ -12,6 +12,9 @@
   for 10 minutes; restores go through the same check. Writing without pins must be asked for
   explicitly. Tools take file names in the data folder's `layouts/`, never paths, and never
   overwrite a file.
+- Before every write the server asks the user itself, in the app (MCP elicitation, on both the
+  2025-11-25 and 2026-07-28 protocols), and writes only on their yes. Where an app can't show the
+  prompt, the write says so, and `get_settings` reports which applies.
 - The Claude Code plugin also registers the MCP server (needs uv on `PATH`).
 - Offline tests for the server's tools; CI checks the extension's manifest and packs it.
 

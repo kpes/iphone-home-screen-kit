@@ -317,5 +317,71 @@ class Server(ToolsTest):
         self.assertEqual({t['name'] for t in manifest['tools']}, listed)
 
 
+@unittest.skipUnless(HAVE_MCP, 'the mcp package is not installed (CI installs it in the server job)')
+class Confirmation(ToolsTest):
+    """write_layout over MCP, as Claude Desktop connects: the app is asked to show the user a yes/no
+    prompt (elicitation), and the phone is written only on yes."""
+    mode = 'legacy'   # the initialize handshake, as Claude Desktop 3.1623 connects
+
+    def call(self, answer=None):
+        """Check, then write_layout through an MCP client. ANSWER: what the 'user' does with the prompt,
+        as (action, content); None = an app that can't show one. Returns (result, prompts shown)."""
+        import server
+        from mcp import Client, types
+        shown = []
+
+        async def elicit(context, params):
+            shown.append(params.message)
+            return types.ElicitResult(action=answer[0], content=answer[1])
+
+        async def go():
+            kw = {'elicitation_callback': elicit} if answer else {}
+            async with Client(server.mcp, mode=self.mode, **kw) as c:
+                return await c.call_tool('write_layout', {'confirm_token': token})
+
+        self.fake_phone()
+        token = self.token(tools.check_layout('base.plist', 'base.plist', PINS))
+        return asyncio.run(go()), shown
+
+    def test_yes_writes(self):
+        r, shown = self.call(('accept', {'write': True}))
+        self.assertFalse(r.is_error, r.content[0].text)
+        self.assertEqual(len(self.calls), 1)
+        self.assertIn('2 pins', shown[0])
+        self.assertNotIn('NOTE', r.content[0].text)
+
+    def test_anything_but_yes_writes_nothing(self):
+        for answer in (('accept', {'write': False}), ('decline', None), ('cancel', None)):
+            r, shown = self.call(answer)
+            self.assertTrue(r.is_error, answer)
+            self.assertIn('did not confirm', r.content[0].text)
+            self.assertEqual(len(shown), 1)
+        self.assertEqual(self.calls, [])
+
+    def test_settings_say_whether_the_app_can_ask(self):
+        import server
+        from mcp import Client, types
+
+        async def elicit(context, params):
+            return types.ElicitResult(action='decline')
+
+        async def go(**kw):
+            async with Client(server.mcp, mode=self.mode, **kw) as c:
+                return (await c.call_tool('get_settings', {})).content[0].text
+        self.assertIn('this app can show it', asyncio.run(go(elicitation_callback=elicit)))
+        self.assertIn("this app can't show it", asyncio.run(go()))
+
+    def test_an_app_that_cannot_ask_gets_a_notice(self):
+        r, shown = self.call(None)
+        self.assertFalse(r.is_error, r.content[0].text)
+        self.assertEqual(shown, [])
+        self.assertEqual(len(self.calls), 1)
+        self.assertTrue(r.content[0].text.startswith('NOTE: this app cannot show'))
+
+
+class ConfirmationModernProtocol(Confirmation):
+    mode = 'auto'     # the 2026 protocol, where a prompt is an input-required result
+
+
 if __name__ == '__main__':
     unittest.main()
