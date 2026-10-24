@@ -2,7 +2,7 @@
 
   python3 -m unittest discover -s tests -v
 """
-import os, plistlib, struct, subprocess, sys, tempfile, unittest
+import os, plistlib, struct, subprocess, sys, tempfile, time, unittest
 
 SKILL = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.claude', 'skills', 'iphone-home-screen')
 SCRIPTS = os.path.join(SKILL, 'scripts')
@@ -195,6 +195,29 @@ class IosGate(unittest.TestCase):
         proven = set()
         push.verify(st, st, pins, proven=proven)
         self.assertEqual(proven, set())
+
+
+class Archive(unittest.TestCase):
+    def test_archive_never_overwrites_a_pruned_file(self):
+        import rank
+        live, raw = tempfile.mkdtemp(), tempfile.mkdtemp()
+        dev = 'DEV-1'
+        os.makedirs(os.path.join(live, dev))
+        old_biome, old_raw, old_devices = rank.BIOME, rank.RAW, rank.DEVICES
+        rank.BIOME, rank.RAW, rank.DEVICES = live, raw, {dev: 'phone'}
+        try:
+            f = os.path.join(live, dev, '100')
+            open(f, 'wb').write(b'full history')
+            rank.archive()
+            open(f, 'wb').write(b'pruned')          # the Mac drops old days from the same file
+            os.utime(f, (time.time() + 5, time.time() + 5))
+            rank.archive()
+            rank.archive()                            # running again changes nothing
+            files = sorted(os.listdir(os.path.join(raw, dev)))
+            self.assertEqual(len(files), 2, files)
+            self.assertEqual(open(os.path.join(raw, dev, '100'), 'rb').read(), b'full history')
+        finally:
+            rank.BIOME, rank.RAW, rank.DEVICES = old_biome, old_raw, old_devices
 
 
 class UsageDecoder(unittest.TestCase):

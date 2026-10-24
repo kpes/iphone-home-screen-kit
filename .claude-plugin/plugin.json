@@ -1,7 +1,7 @@
 {
   "name": "iphone-home-screen",
   "displayName": "iPhone Home Screen",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Arrange your iPhone home screen from your Mac over USB, in any layout: chosen order, folders, and apps or folders pinned to exact grid slots with blank spaces. Optionally ranks apps by real use from Screen Time data.",
   "author": {
     "name": "Keith Pesavento"

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.1
+- Fix: `rank.py --archive` no longer overwrites archived usage files. The Mac prunes old days from
+  inside the same files it keeps updating, so overwriting lost history; a changed file is now saved
+  beside the old copy, and ranking merges them.
+
 ## 1.0.0
 First public release.
 - Arranges the home screen over USB in any layout, with blank spaces: apps and folders pinned to

@@ -118,14 +118,30 @@ def list_devices():
 
 
 def archive():
-    """Copy the live usage files for DEVICES into data/raw (run every few weeks; the Mac keeps ~4)."""
+    """Copy the live usage files for DEVICES into data/raw (run every few weeks; the Mac keeps ~4).
+
+    Never overwrites: the Mac prunes old events from inside the same files it keeps appending to, so
+    copying over an archived file would lose the days it no longer has. A changed file is saved
+    beside the old copy instead; ranking merges and de-duplicates events from every copy."""
+    import filecmp, time
     for dev, label in DEVICES.items():
         src, dst = os.path.join(BIOME, dev), os.path.join(RAW, dev)
         os.makedirs(dst, exist_ok=True)
-        files = glob.glob(os.path.join(src, '[0-9]*'))
-        for f in files:
-            shutil.copy2(f, dst)
-        print(f'{label}: copied {len(files)} files to {dst}')
+        new = kept = same = 0
+        for f in glob.glob(os.path.join(src, '[0-9]*')):
+            target = os.path.join(dst, os.path.basename(f))
+            if not os.path.exists(target):
+                shutil.copy2(f, target)
+                new += 1
+            elif filecmp.cmp(f, target, shallow=False):
+                same += 1
+            else:
+                stamp = time.strftime('%Y%m%dT%H%M%S', time.localtime(os.path.getmtime(f)))
+                versioned = f'{target}.{stamp}'
+                if not os.path.exists(versioned):
+                    shutil.copy2(f, versioned)
+                kept += 1
+        print(f'{label}: {new} new, {kept} changed (saved alongside the old copies), {same} unchanged -> {dst}')
 
 
 def main():

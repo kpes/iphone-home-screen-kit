@@ -11,7 +11,7 @@ mkdir -p "$D/layouts" "$D/data" && python3 -m venv "$D/pmd" && "$D/pmd/bin/pip" 
 #   optional: add -c scripts/constraints.txt for the exact tested versions (resolved on Python 3.15)
 cp assets/config.example.json "$D/config.json"     # then edit it
 python3 -I -B scripts/rank.py --devices            # find your phone's ID → config.json
-python3 -I -B scripts/rank.py --archive            # keep a copy of usage data (every few weeks)
+python3 -I -B scripts/rank.py --archive            # keep a copy of usage data (every few weeks; never overwrites)
 python3 -I -B scripts/rank.py "$D/data/ranking-2026-11-01.csv" --lookup
 "$D/pmd/bin/python" -B scripts/homescreen.py dump "$D/layouts/2026-11-01-before.plist"
 python3 -I -B scripts/arrange.py "$D/layouts/2026-11-01-before.plist" "$D/layouts/2026-11-01-new.plist" 1 \

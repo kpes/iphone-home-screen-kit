@@ -5,7 +5,7 @@ license: MIT (see LICENSE)
 compatibility: Requires macOS with Python 3 and the Xcode command line tools, one iPhone (not iPad) connected by USB and trusted, and, for usage ranking only, iPhone Screen Time "Share Across Devices" plus Full Disk Access for the app running the agent. Needs network to install its one dependency (pip); after that only the optional App Store genre lookups use it. Runs locally (e.g. Claude Code), not in cloud chat sandboxes.
 metadata:
   author: Keith Pesavento
-  version: "1.0.0"
+  version: "1.0.1"
   tested-ios: "27.0.1"
   tested-pymobiledevice3: "11.43.1"
 ---
