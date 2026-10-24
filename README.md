@@ -35,12 +35,13 @@ project folder: your settings and data live in `~/iphone-home-screen/`, wherever
    downloads its own otherwise. Nothing else to install.
 3. Connect and unlock your iPhone, then say **"show my home screen"** in a new chat.
 
-Before every write, the extension itself asks you in the app ("Write a new home screen layout to
-your iPhone?", with the pages that change and the pins); nothing is written unless you say yes
-there. That question comes from the server (MCP elicitation), not from Claude, so Claude can't answer
-it for you. If an app can't show it, `get_settings` says so, and a write then relies on the checks
-below and on Claude asking you first. Don't count on the app's own per-tool approval setting: in
-testing, Claude Desktop ran tools set to "Needs approval" without asking. The server also refuses a
+Before a write, Claude shows you the change and waits for your yes. In apps that support it (MCP
+elicitation), the extension also asks you itself ("Write a new home screen layout to your iPhone?",
+with the pages that change and the pins), and writes nothing unless you say yes there; Claude can't
+answer that question for you. Claude Desktop 3.1623 doesn't support it yet, so there a write relies
+on Claude asking you and on the checks below; `get_settings` says which applies. Don't count on the
+app's own per-tool approval setting either: in testing, Claude Desktop ran tools set to "Needs
+approval" without asking. The server also refuses a
 write unless that exact layout and those pins passed the offline check in the last 10 minutes (a
 one-time confirmation token). Ranking by usage also needs Full Disk Access for the Claude app (see
 Requirements). Settings → Extensions → iPhone Home Screen lets you change the data folder.
