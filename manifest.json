@@ -1,0 +1,67 @@
+{
+  "manifest_version": "0.4",
+  "name": "iphone-home-screen",
+  "display_name": "iPhone Home Screen",
+  "version": "2.0.0",
+  "description": "Arrange your iPhone home screen from your Mac over USB: any order, folders, and apps or folders pinned to exact grid slots with blank spaces.",
+  "long_description": "Lets Claude arrange the home screen of an iPhone connected to your Mac by USB: pages, order and folders, with apps or folders pinned to exact grid slots so you can leave blank spaces. Every write is checked offline first, compared with the phone's live layout, preceded by an automatic backup, and read back to prove the pins landed; writes need a confirmation step. Optionally ranks your apps by real use, from the Screen Time data your iPhone syncs to your Mac (needs Full Disk Access for Claude). Uses undocumented Apple interfaces: tested on iOS 27.0.1. Not affiliated with Apple. Your layouts and settings stay on your Mac, in ~/iphone-home-screen.",
+  "author": {
+    "name": "Keith Pesavento",
+    "url": "https://github.com/kpes"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kpes/iphone-home-screen-kit"
+  },
+  "homepage": "https://github.com/kpes/iphone-home-screen-kit",
+  "documentation": "https://github.com/kpes/iphone-home-screen-kit#readme",
+  "support": "https://github.com/kpes/iphone-home-screen-kit/issues",
+  "icon": "icon.png",
+  "server": {
+    "type": "uv",
+    "entry_point": "server/server.py",
+    "mcp_config": {
+      "command": "uv",
+      "args": ["run", "--directory", "${__dirname}", "server/server.py"],
+      "env": {
+        "IPHONE_HOME_SCREEN_DIR": "${user_config.data_folder}"
+      }
+    }
+  },
+  "tools": [
+    { "name": "show_layout", "description": "Read the iPhone's home screen (model, iOS, grid, dock, every page) and save it as a snapshot. Read-only on the phone." },
+    { "name": "list_snapshots", "description": "List saved layouts, including the automatic backups made before each write." },
+    { "name": "show_snapshot", "description": "Describe a saved layout without touching the phone." },
+    { "name": "build_page", "description": "Set one page to an exact list of apps and folders, into a new layout file." },
+    { "name": "make_folder", "description": "Create a new folder from apps on the home screen, into a new layout file." },
+    { "name": "check_layout", "description": "Check a layout and its pins offline; returns a preview and a one-time confirmation token." },
+    { "name": "write_layout", "description": "Write the confirmed layout to the iPhone, after a backup and live checks, then read it back and verify." },
+    { "name": "restore_snapshot", "description": "Prepare putting a saved layout back, with its pins; returns a confirmation token." },
+    { "name": "list_usage_devices", "description": "List devices whose Screen Time usage synced to this Mac." },
+    { "name": "archive_usage", "description": "Keep a copy of the synced usage data, which the Mac keeps for about 4 weeks." },
+    { "name": "rank_apps", "description": "Rank apps by days used, opens and time, from Screen Time data." },
+    { "name": "get_settings", "description": "Show the saved settings, layout plan and pins in effect." },
+    { "name": "save_settings", "description": "Save the ranking settings (config.json) and the layout plan (layout.md)." },
+    { "name": "read_guide", "description": "Read the troubleshooting, how-it-works and commands guides." }
+  ],
+  "tools_generated": false,
+  "user_config": {
+    "data_folder": {
+      "type": "string",
+      "title": "Data folder",
+      "description": "Where your layouts, backups and settings are kept. Shared with the Claude Code skill.",
+      "default": "${HOME}/iphone-home-screen",
+      "required": false
+    }
+  },
+  "keywords": ["iphone", "ios", "home screen", "springboard", "screen time", "pymobiledevice3"],
+  "license": "MIT",
+  "privacy_policies": ["https://www.apple.com/legal/privacy/"],
+  "compatibility": {
+    "claude_desktop": ">=1.0.0",
+    "platforms": ["darwin"],
+    "runtimes": {
+      "python": ">=3.10"
+    }
+  }
+}

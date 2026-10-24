@@ -28,3 +28,29 @@ jobs:
         run: |
           pip install "git+https://github.com/agentskills/agentskills.git#subdirectory=skills-ref"
           skills-ref validate .claude/skills/iphone-home-screen
+
+  mcp-server:
+    # The Desktop extension targets macOS, and pymobiledevice3 installs there as users get it.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install the server's locked dependencies
+        run: |
+          pip install uv
+          uv sync --locked
+      - name: Offline tests, including the MCP layer
+        run: uv run python -B -m unittest discover -s tests -v
+      - name: Desktop extension manifest check and pack
+        run: |
+          npx -y @anthropic-ai/mcpb@2.1.2 validate manifest.json
+          npx -y @anthropic-ai/mcpb@2.1.2 pack . dist/iphone-home-screen.mcpb
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iphone-home-screen.mcpb
+          path: dist/iphone-home-screen.mcpb

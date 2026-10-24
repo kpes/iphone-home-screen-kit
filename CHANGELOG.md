@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.0.0
+- **Claude Desktop extension** (`.mcpb`): a local MCP server, so the regular chat in the Claude
+  desktop app can arrange the home screen too. The Claude app installs its dependencies with uv; the
+  extension doesn't bundle pymobiledevice3. Tools: `show_layout`, `list_snapshots`, `show_snapshot`,
+  `build_page`, `make_folder`, `check_layout`, `write_layout`, `restore_snapshot`,
+  `list_usage_devices`, `archive_usage`, `rank_apps`, `get_settings`, `save_settings`, `read_guide`.
+- Safety in code: every tool runs the skill's own scripts, so writes get all of `push.py`'s checks
+  (live-layout compare, iPhone guard, iOS gate, snapshot with pins, readback). A write also needs a
+  one-time token from `check_layout`, bound to the exact layout files and pins that passed and valid
+  for 10 minutes; restores go through the same check. Writing without pins must be asked for
+  explicitly. Tools take file names in the data folder's `layouts/`, never paths, and never
+  overwrite a file.
+- The Claude Code plugin also registers the MCP server (needs uv on `PATH`).
+- Offline tests for the server's tools; CI checks the extension's manifest and packs it.
+
 ## 1.1.0
 - Fix: on a page with pins, a widget could land below the unpinned icons instead of where the
   layout put it, and `push.py` then reported the pins as FAILED. Seen on iOS 27.0.1 with the
