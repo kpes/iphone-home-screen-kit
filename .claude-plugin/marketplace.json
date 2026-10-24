@@ -1,0 +1,12 @@
+{
+  "name": "iphone-home-screen-kit",
+  "description": "The iPhone home screen skill: arrange your iPhone's home screen from your Mac, with blank spaces and pinned slots.",
+  "owner": { "name": "Keith Pesavento" },
+  "plugins": [
+    {
+      "name": "iphone-home-screen",
+      "source": "./",
+      "description": "Arrange your iPhone home screen from your Mac over USB, in any layout, with blank spaces and pinned slots."
+    }
+  ]
+}

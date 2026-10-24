@@ -1,0 +1,13 @@
+# Defensive: if your data folder is ever pointed inside this repo, keep it out of git.
+config.json
+pins.txt
+layout.md
+data/
+layouts/
+pmd/
+*.plist
+*.csv
+
+__pycache__/
+*.pyc
+.DS_Store

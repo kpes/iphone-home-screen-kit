@@ -1,0 +1,21 @@
+# Fixed slots: PAGE:ITEM:SLOT, one per line. Slots are 0-23 on a 4x6 grid, left to right,
+# top to bottom (0 = top-left, 23 = bottom-right). Apps by bundle ID, folders by name.
+# Only items placed after a gap need a pin. Pass the file on every write:
+#   "$D/pmd/bin/python" -B scripts/push.py NEW.plist AFTER.plist --pins "$D/pins.txt"
+#
+# Example page 1: a medium widget fills slots 0-7 (unpinned), row 3 (slots 8-11) unpinned,
+# row 4 left blank, the most-used apps in rows 5-6 just above the dock.
+1:com.example.app5:16
+1:com.example.app6:17
+1:com.example.app7:18
+1:com.example.app8:19
+1:com.example.app1:20
+1:com.example.app2:21
+1:com.example.app3:22
+1:com.example.app4:23
+
+# Example page 3: folders grouped by rows, with gaps.
+3:Home:0
+3:Shopping:1
+3:Media:4
+3:Work:8

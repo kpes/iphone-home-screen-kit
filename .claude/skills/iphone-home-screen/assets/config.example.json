@@ -1,0 +1,18 @@
+{
+  "devices": {
+    "00000000-0000-0000-0000-000000000000": "My iPhone"
+  },
+  "dock": [
+    "com.apple.mobilephone",
+    "com.apple.mobilesafari",
+    "com.apple.MobileSMS",
+    "com.apple.mobilemail"
+  ],
+  "exclude": [
+    "com.apple.Preferences"
+  ],
+  "exclude_genres": [
+    "Games"
+  ],
+  "store_country": "us"
+}
