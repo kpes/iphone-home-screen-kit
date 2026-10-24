@@ -14,8 +14,9 @@
   overwrite a file.
 - In apps that support MCP elicitation (on either the 2025-11-25 or the 2026-07-28 protocol), the
   server asks the user itself before every write and writes only on their yes. Claude Desktop
-  3.1623 doesn't support elicitation, so there the write says the user wasn't asked by the app, and
-  `get_settings` reports which applies.
+  3.1623 doesn't support elicitation; there, set `write_layout` to "Needs approval" so Desktop asks
+  before every write. The write notes when the server couldn't ask itself, and `get_settings`
+  reports which applies.
 - The Claude Code plugin stays skill-only. Claude Code users can add the MCP server themselves
   (`claude mcp add`, see the README; needs uv on `PATH`).
 - Releases from 2.0.0 on carry the CI-built `iphone-home-screen.mcpb` as a release asset.

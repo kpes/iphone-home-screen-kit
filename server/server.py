@@ -45,7 +45,7 @@ To change the layout, every time:
 4. Show the user the pages and pins check_layout printed, and get a clear yes.
 5. write_layout(confirm_token). Where the app can, it asks the user itself to confirm; if they
    don't say yes there, nothing is written. If it starts with "NOTE: this app cannot show", the
-   app couldn't ask: tell the user. Report what it printed: lost and added must be [], every pinned
+   server couldn't ask the user itself: tell the user. Report what it printed: lost and added must be [], every pinned
    page must say CONFIRMED. FAILED: stop and read_guide("troubleshooting"). "not provable": ask
    the user to look at that page. Tell the user the snapshot it saved, so they can undo with
    restore_snapshot.
@@ -137,9 +137,9 @@ class Confirm(BaseModel):
     write: bool = Field(default=False, title='Yes, write it to my iPhone')
 
 
-NO_PROMPT = ('NOTE: this app cannot show the server\'s own confirmation prompt (MCP elicitation), so the user '
-             'was not asked by the app before this write: it relied on the confirmation token and on Claude '
-             'asking first. Tell the user.\n\n')
+NO_PROMPT = ('NOTE: this app cannot show the server\'s own confirmation prompt (MCP elicitation), so the server '
+             'did not ask the user itself: this write relied on the app\'s tool approval (if write_layout is set '
+             'to ask), on Claude asking first, and on the confirmation token. Tell the user.\n\n')
 
 
 def ask_user(confirm_token: str, ctx: Context):
@@ -226,8 +226,8 @@ def get_settings(ctx: Context) -> str:
     return tools.get_settings() + '\n\n--- confirmation prompt before writes:\n' + (
         'this app can show it: write_layout asks the user in the app, and writes only on their yes'
         if can_ask(ctx) else
-        "this app can't show it (no MCP elicitation): writes rely on the confirmation token and on Claude "
-        'asking the user first')
+        "this app can't show it (no MCP elicitation): writes rely on the app's tool approval (set write_layout "
+        'to "Needs approval"), on Claude asking the user first, and on the confirmation token')
 
 
 @tool(LOCAL, 'Save settings')
