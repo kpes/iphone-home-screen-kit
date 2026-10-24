@@ -199,7 +199,7 @@ class Writing(ToolsTest):
         self.fake_phone(snapshot='w.autosave-before-3.plist')
         out = tools.write_layout(t)
         self.assertNotIn('restore_snapshot with', out)
-        self.assertIn('build_page, widget first', out)
+        self.assertIn('rebuild the changed pages', out)
 
 
 class Restoring(ToolsTest):
@@ -234,6 +234,12 @@ class Showing(ToolsTest):
         self.assertIn('[Tools] folder of 2', out)
         self.assertIn(PINS[0], out)
         self.assertTrue(tools.resolve(out.split('Saved this layout as ')[1].split()[0]))
+
+    def test_widgets_are_named_as_arrange_takes_them(self):
+        out = tools.show_snapshot('base.plist', [1])
+        self.assertIn('widget com.example.weather.widget#W1 (medium)', out)
+        built = tools.build_page('base.plist', 1, ['com.example.weather.widget#W1', 'com.example.a1'])
+        self.assertIn('Saved as', built)
 
     def test_unreadable_phone_is_explained(self):
         tools.run_script = lambda *a, **k: (1, 'No device connected')

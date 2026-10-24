@@ -123,8 +123,8 @@ def is_folder(it):
 
 
 def item_text(it):
-    if it.get('elementType') == 'widget':
-        return f"widget {it.get('bundleIdentifier') or it.get('displayIdentifier')} ({it.get('gridSize', '?')})"
+    if push.is_widget(it):  # named as homescreen.py show prints it, which arrange.py and pins take
+        return f"widget {push.name(it)} ({it.get('gridSize', '?')})"
     if is_folder(it):
         apps = [push.name(a) for page in it['iconLists'] for a in page]
         return f"[{it.get('displayName')}] folder of {len(apps)}: " + ', '.join(apps)
@@ -338,8 +338,8 @@ def undo_note(snap, grid):
     if ok:
         return f'\n\nTo undo this write: restore_snapshot with {os.path.basename(snap)}.'
     return (f'\n\nThe layout from before this write is saved as {os.path.basename(snap)}, but restoring it with '
-            'its pins would not pass the check as read (the phone lists a widget after pinned items). To undo, '
-            'rebuild the changed pages from it with build_page, widget first, and check and write as usual.')
+            'its pins would not pass the check as saved (restore_snapshot shows why; e.g. a widget listed after '
+            'pinned items). To undo, rebuild the changed pages from it with build_page and check and write as usual.')
 
 
 def restore_snapshot(snapshot, pins_file=None, untested_ios_ok=False):

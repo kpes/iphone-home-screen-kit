@@ -36,8 +36,9 @@ To change the layout, every time:
    each call writes a new file and the next call builds on it.
 3. check_layout(base=the snapshot, new=the built file, pins=[...]). It must pass. Slots count
    from 0, left to right, top to bottom (0-23 on a 4x6 grid); a medium widget fills rows 1-2.
-   "nowhere left for <widget>" on a page you didn't change means the phone lists that widget
-   after pinned items: rebuild the page with build_page, widget first, in the user's order.
+   Widgets are listed as "<bundle ID>#<ID>": give build_page that form, and pin a widget by its ID
+   (the part after #) at its top-left slot. Widgets start only on rows 1, 3 and 5; on a pinned
+   page, writes pin each widget where the layout puts it.
 4. Show the user the pages and pins check_layout printed, and get a clear yes.
 5. write_layout(confirm_token). Report what it printed: lost and added must be [], every pinned
    page must say CONFIRMED. FAILED: stop and read_guide("troubleshooting"). "not provable": ask
@@ -72,7 +73,7 @@ def tool(annotations, title):
     return wrap
 
 
-Pins = Annotated[Optional[list[str]], Field(description='Pins as "PAGE:ITEM:SLOT", e.g. "1:com.apple.Maps:23" or "3:Travel:4" (folders by name). Pass every pin to keep, not just new ones.')]
+Pins = Annotated[Optional[list[str]], Field(description='Pins as "PAGE:ITEM:SLOT", e.g. "1:com.apple.Maps:23", "3:Travel:4" (folders by name), "1:<widget ID>:0" (widgets by the ID after #). Pass every pin to keep, not just new ones.')]
 
 
 @tool(READ, 'Show the iPhone layout')
@@ -98,7 +99,7 @@ def show_snapshot(name: Annotated[str, Field(description='A layout file name fro
 @tool(LOCAL, 'Build a page')
 def build_page(base: Annotated[str, Field(description='Layout to start from: the show_layout snapshot, or the result of an earlier build_page/make_folder')],
                page: Annotated[int, Field(description='1 = first home screen page; one past the last adds a page. The dock is never edited.')],
-               items: Annotated[list[str], Field(description='Exactly what goes on the page, in screen order: bundle IDs, folder names, widget bundle IDs')],
+               items: Annotated[list[str], Field(description='Exactly what goes on the page, in screen order: bundle IDs, folder names, widgets as "<bundle ID>#<ID>" (as show_layout lists them)')],
                grid: Annotated[Optional[str], Field(description='COLUMNSxROWS; default the grid show_layout read')] = None) -> str:
     """Set one page to an exact list of items, pulling each from wherever it is now (apps leave folders
     when listed). Displaced items go to the front of the next page. Saves a new file; the phone is untouched."""
