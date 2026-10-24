@@ -444,10 +444,11 @@ def main(argv):
         if os.path.exists(last_pins):
             snap_pins = f'{base}.autosave-before-{stamp}.pins.txt'
             shutil.copy(last_pins, snap_pins)
-        print(f'saved the layout from before this write: {snap}')
+        # Flushed: if this run is stopped while writing, the caller must still see where the snapshot is.
+        print(f'saved the layout from before this write: {snap}', flush=True)
         print(f'  to restore: "{sys.executable}" -B {os.path.abspath(__file__)} {snap} <new name>.plist '
               + (f'--pins {snap_pins}' if snap_pins else '--no-pins')
-              + ('' if snap_pins else '  (no record of earlier pins here, so gaps would pack)'))
+              + ('' if snap_pins else '  (no record of earlier pins here, so gaps would pack)'), flush=True)
 
         live = await go(payload, sb)
         return to_send, live, grid, info, all_pins

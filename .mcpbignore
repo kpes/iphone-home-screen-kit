@@ -1,0 +1,12 @@
+# The Desktop extension needs: manifest.json, icon.png, pyproject.toml, uv.lock, server/,
+# and the skill folder (its scripts and guides). Everything else stays out of the .mcpb.
+.venv/
+.github/
+.claude-plugin/
+tests/
+dist/
+__pycache__/
+*.pyc
+CHANGELOG.md
+SECURITY.md
+DEVELOPING.md

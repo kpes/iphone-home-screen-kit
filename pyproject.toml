@@ -1,0 +1,14 @@
+[project]
+name = "iphone-home-screen-mcp"
+version = "2.0.0"
+description = "Local MCP server for the iPhone home screen kit: arrange an iPhone home screen from a Mac over USB."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=2.3,<3",
+    "pymobiledevice3==11.43.1",
+]
+
+[tool.uv]
+package = false

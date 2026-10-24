@@ -11,3 +11,8 @@ pmd/
 __pycache__/
 *.pyc
 .DS_Store
+
+# The MCP server's environment and the packed Desktop extension
+.venv/
+dist/
+*.mcpb
