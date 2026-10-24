@@ -50,7 +50,8 @@ async def maybe(x):
 
 
 def summary(state):
-    name = lambda it: it.get('bundleIdentifier') or f"[{it.get('displayName')}]"
+    name = lambda it: (f"{it.get('bundleIdentifier')}#{it.get('displayIdentifier')}"  # a widget: # then its ID
+                       if it.get('elementType') == 'widget' else it.get('bundleIdentifier') or f"[{it.get('displayName')}]")
     print('dock  :', [name(i) for i in state[0]])
     print('page 1:', [name(i) for i in state[1]])
     if len(state) > 2:

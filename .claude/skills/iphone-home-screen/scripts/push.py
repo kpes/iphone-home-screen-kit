@@ -23,13 +23,16 @@ Before writing, push.py:
   write (last-write.pins.txt beside AFTER), and prints the restore command.
 It exits non-zero if anything was lost or added, or a pin didn't land.
 
---pin puts an app or folder in a fixed grid slot, leaving gaps. Slots count from 0, left to
-right, top to bottom (0-23 on a 4x6 grid; a medium widget covers the first two rows). Give an
-app by bundle ID, a folder by its name (e.g. 1:Utilities:23). It sends the layout in
-SpringBoard's on-disk shape with `listMetadata` -> `fixedLocations`: apps are keyed by bundle
-ID, folders by "folder:<uniqueIdentifier>", with a uniqueIdentifier we assign (SpringBoard
-keeps it). Unpinned items fill the remaining slots in order. Pinned items are sent first, in
-reverse slot order, so the readback, which lists each page in slot order, proves the pins.
+--pin puts an app, folder or widget in a fixed grid slot, leaving gaps. Slots count from 0, left
+to right, top to bottom (0-23 on a 4x6 grid; a widget's slot is its top-left cell, and a medium
+widget at slot 0 covers the first two rows). Give an app by bundle ID, a folder by its name
+(e.g. 1:Utilities:23), a widget by its ID (after the # in `homescreen.py show`). It sends the
+layout in SpringBoard's on-disk shape with `listMetadata` -> `fixedLocations`: apps are keyed by
+bundle ID, widgets by displayIdentifier, folders by "folder:<uniqueIdentifier>", with a
+uniqueIdentifier we assign (SpringBoard keeps it). Unpinned items fill the remaining slots in
+order. On a page with pins, each unpinned widget is pinned where the layout puts it, because
+SpringBoard may otherwise move it below unpinned icons. Pinned items are sent first, in reverse
+slot order, so the readback, which lists each page in slot order, proves the pins.
 """
 import asyncio, copy, os, plistlib, shutil, sys, uuid
 from collections import Counter, defaultdict
@@ -56,11 +59,20 @@ def ids(x, c, folders=None):
     return c
 
 
+def is_widget(it):
+    return it.get('elementType') == 'widget'
+
+
 def name(it):
+    if is_widget(it):  # one app can have several widgets: the ID tells them apart
+        return f"{it.get('bundleIdentifier')}#{it.get('displayIdentifier')}"
     return it.get('bundleIdentifier') or '[%s]' % it.get('displayName')
 
 
 def key(it):
+    """What a pin names: an app's bundle ID, a folder's name, a widget's displayIdentifier."""
+    if is_widget(it):
+        return it.get('displayIdentifier')
     return it.get('bundleIdentifier') or it.get('displayName')
 
 
@@ -68,10 +80,22 @@ WIDGET_SHAPE = {'small': (2, 2), 'medium': (4, 2), 'large': (4, 4), 'extraLarge'
 
 
 def shape(it, cols):
-    if it.get('elementType') != 'widget':
+    if not is_widget(it):
         return 1, 1
     w, h = WIDGET_SHAPE.get(it.get('gridSize'), (1, 1))
     return min(w, cols), h
+
+
+def cells(slot, w, h, cols):
+    """The grid cells an item of W x H covers with its top-left corner at SLOT."""
+    r, c = divmod(slot, cols)
+    return [(r + dr) * cols + c + dc for dr in range(h) for dc in range(w)]
+
+
+def fits(slot, w, h, grid):
+    cols, rows = grid
+    r, c = divmod(slot, cols)
+    return c + w <= cols and r + h <= rows
 
 
 def page_slots(page, cols):
@@ -111,9 +135,10 @@ def check(before_path, new_path, grid=DEFAULT_GRID, pins=()):
 
 def validate_pins(state, pins, grid=DEFAULT_GRID, check_widgets=True):
     """Problems with PINS against STATE: bad pages or slots, items not on their page, two pins on
-    one slot or one item, and pins that leave something (e.g. a widget) nowhere to go."""
+    one slot or one item, a pinned widget that runs off the grid or over another pin, and pins
+    that leave something (e.g. a widget) nowhere to go."""
     cols, rows = grid
-    errors, seen_slot, seen_item = [], set(), set()
+    errors, seen_slot, seen_item, covered = [], set(), set(), {}
     for page, item, slot in pins:
         if not 1 <= page < len(state):
             errors.append(f'{page}:{item}:{slot}: page {page} is not a home screen page (1-{len(state) - 1})')
@@ -125,8 +150,25 @@ def validate_pins(state, pins, grid=DEFAULT_GRID, check_widgets=True):
         if (page, item.strip('[]')) in seen_item:
             errors.append(f'{page}:{item}:{slot}: {item} is pinned twice')
         seen_slot.add((page, slot)); seen_item.add((page, item.strip('[]')))
-        if not any(key(i) == item.strip('[]') for i in state[page]):
-            errors.append(f'{page}:{item}:{slot}: {item} is not on page {page}')
+        it = next((i for i in state[page] if key(i) == item.strip('[]')), None)
+        if it is None:
+            widget = next((i for i in state[page] if is_widget(i) and i.get('bundleIdentifier') == item), None)
+            errors.append(f'{page}:{item}:{slot}: {item} is not on page {page}' + (
+                f' (it is a widget: pin it by its ID, {page}:{widget.get("displayIdentifier")}:{slot})' if widget else ''))
+            continue
+        w, h = shape(it, cols)
+        if not 0 <= slot < cols * rows:
+            continue
+        if not fits(slot, w, h, grid):
+            errors.append(f'{page}:{item}:{slot}: a {it.get("gridSize")} widget at slot {slot} runs off the {cols}x{rows} grid')
+            continue
+        for x in cells(slot, w, h, cols):
+            other = covered.get((page, x))
+            if other and other[1] != slot:  # the same slot twice is reported above
+                errors.append(f'{page}:{item}:{slot}: overlaps the pinned {other[0]} at slot {other[1]}')
+                break
+        for x in cells(slot, w, h, cols):
+            covered.setdefault((page, x), (item, slot))
     if not errors and check_widgets:
         for page in {p for p, _, _ in pins}:
             page_pins = {i.strip('[]'): s for p, i, s in pins if p == page}
@@ -136,7 +178,8 @@ def validate_pins(state, pins, grid=DEFAULT_GRID, check_widgets=True):
                 errors.append(f'page {page}: with these pins, nowhere left for {missing} (a pin under a widget?)')
             natural = positions(state[page], {}, grid)
             for it in state[page]:
-                if it.get('elementType') == 'widget' and name(it) in placed and placed[name(it)] != natural.get(name(it)):
+                if (is_widget(it) and key(it) not in page_pins and name(it) in placed
+                        and placed[name(it)] != natural.get(name(it))):
                     errors.append(f'page {page}: a pin sits where the widget {name(it)} goes (slot '
                                   f'{natural.get(name(it))}), which would push it to slot {placed[name(it)]}')
     return errors
@@ -145,7 +188,8 @@ def validate_pins(state, pins, grid=DEFAULT_GRID, check_widgets=True):
 def with_pins(state, pins, grid=DEFAULT_GRID):
     """Wrap a service-format layout in the on-disk shape with fixed slots for PINS.
 
-    pins: list of (page, bundle_id_or_folder_name, slot); page 1 is the first home screen page.
+    pins: list of (page, item, slot), item being a bundle ID, a folder name or a widget's
+    displayIdentifier; page 1 is the first home screen page.
     """
     cols, rows = grid
     state = copy.deepcopy(state)
@@ -158,10 +202,12 @@ def with_pins(state, pins, grid=DEFAULT_GRID):
     if errors:
         sys.exit('refusing pins:\n  ' + '\n  '.join(errors))
     for page, item, slot in pins:
-        app = next((it for it in pages[page - 1] if it.get('bundleIdentifier') == item), None)
+        app = next((it for it in pages[page - 1] if it.get('bundleIdentifier') == item and not is_widget(it)), None)
+        widget = next((it for it in pages[page - 1] if is_widget(it) and it.get('displayIdentifier') == item), None)
         folder = next((it for it in pages[page - 1] if it.get('iconLists') is not None
                        and 'bundleIdentifier' not in it and it.get('displayName') == item.strip('[]')), None)
-        if app:
+        if app or widget:
+            # SpringBoard keys a widget pin by the widget's displayIdentifier (its bundle ID is ignored).
             fixed[page_ids[page - 1]][item] = slot
         elif folder:
             # SpringBoard keys folder pins as "folder:<uniqueIdentifier>" and keeps an ID we supply.
@@ -169,7 +215,7 @@ def with_pins(state, pins, grid=DEFAULT_GRID):
             folder['listUniqueIdentifiers'] = [str(uuid.uuid4()).upper() for _ in folder['iconLists']]
             fixed[page_ids[page - 1]][f"folder:{folder['uniqueIdentifier']}"] = slot
         else:
-            sys.exit(f'--pin: no app or folder named {item} on page {page}')
+            sys.exit(f'--pin: no app, folder or widget named {item} on page {page}')
     return {
         'buttonBar': state[0],
         'iconLists': pages,
@@ -177,6 +223,19 @@ def with_pins(state, pins, grid=DEFAULT_GRID):
         'listMetadata': {pid: {'fixedLocationsGridColumns': cols, 'fixedLocationsGridRows': rows,
                                'fixedLocations': f} for pid, f in fixed.items()},
     }
+
+
+def with_widget_pins(state, pins, grid=DEFAULT_GRID):
+    """PINS plus a pin for every unpinned widget on a page that has pins, at the slot the layout
+    gives it (see positions). Left unpinned, a widget can land below the unpinned icons instead
+    (seen on iOS 27.0.1, with no rule we could predict), so these pins leave SpringBoard no choice."""
+    extra = []
+    for page in sorted({p for p, _, _ in pins}):
+        page_pins = {i.strip('[]'): s for p, i, s in pins if p == page}
+        at = positions(state[page], page_pins, grid)
+        extra += [(page, key(it), at[name(it)]) for it in state[page]
+                  if is_widget(it) and key(it) not in page_pins and name(it) in at]
+    return list(pins) + extra
 
 
 def pinned_first(state, pins):
@@ -198,24 +257,26 @@ def expected_order(items, page_pins, grid=DEFAULT_GRID):
 
 
 def positions(items, page_pins, grid=DEFAULT_GRID):
-    """Simulate SpringBoard: pinned items take their slots, the rest fill the first free space in
-    list order. Returns {item name: slot}; an item that doesn't fit is left out."""
+    """Simulate SpringBoard: pinned items take their slots (a widget every cell it covers, from its
+    top-left slot), the rest fill the first free space in list order. Returns {item name: slot};
+    an item that doesn't fit is left out. Matches the phone when every widget on a pinned page is
+    pinned too (with_widget_pins); an unpinned widget may land elsewhere."""
     cols, rows = grid
     free = [True] * (cols * rows)
     at = {}
     for it in items:
         if key(it) in page_pins:
-            at[name(it)] = page_pins[key(it)]
-            free[page_pins[key(it)]] = False
+            s = at[name(it)] = page_pins[key(it)]
+            for x in cells(s, *shape(it, cols), cols):
+                if x < cols * rows:
+                    free[x] = False
     for it in items:
         if key(it) in page_pins:
             continue
         w, h = shape(it, cols)
         for s in range(cols * rows):
-            r, c = divmod(s, cols)
-            cells = [(r + dr) * cols + c + dc for dr in range(h) for dc in range(w)]
-            if c + w <= cols and r + h <= rows and all(free[x] for x in cells):
-                for x in cells:
+            if fits(s, w, h, grid) and all(free[x] for x in cells(s, w, h, cols)):
+                for x in cells(s, w, h, cols):
                     free[x] = False
                 at[name(it)] = s
                 break
@@ -225,7 +286,7 @@ def positions(items, page_pins, grid=DEFAULT_GRID):
 def verify(sent, live, pins, grid=DEFAULT_GRID, proven=None):
     """Readback is in slot order. Pinned items were sent first, so a page that reads back as the
     simulated slot order proves its pins; one that reads back as sent means they were ignored.
-    PROVEN, if given, collects 'app' and/or 'folder' for pins on CONFIRMED pages only."""
+    PROVEN, if given, collects 'app', 'folder' and/or 'widget' for pins on CONFIRMED pages only."""
     ok = True
     for page in sorted({p for p, _, _ in pins}):
         page_pins = {item.strip('[]'): slot for p, item, slot in pins if p == page}
@@ -238,7 +299,7 @@ def verify(sent, live, pins, grid=DEFAULT_GRID, proven=None):
             if proven is not None:
                 for it in sent[page]:
                     if key(it) in page_pins:
-                        proven.add('app' if it.get('bundleIdentifier') else 'folder')
+                        proven.add('widget' if is_widget(it) else 'app' if it.get('bundleIdentifier') else 'folder')
         else:
             ok = False
             print(f'pins page {page}: FAILED, read back {"as sent (pins ignored)" if got == as_sent else "in an unexpected order"}')
@@ -355,8 +416,11 @@ def main(argv):
             compare(before, sent, grid, pins)
             sys.exit('refusing to write: dump the layout again and rebuild from that')
 
-        to_send = pinned_first(sent, pins) if pins else sent
-        payload = with_pins(to_send, pins, grid) if pins else to_send
+        all_pins = with_widget_pins(sent, pins, grid) if pins else pins
+        for page, item, slot in all_pins[len(pins):]:
+            print(f'pinning widget {item} at page {page} slot {slot}, where the layout puts it')
+        to_send = pinned_first(sent, all_pins) if pins else sent
+        payload = with_pins(to_send, all_pins, grid) if pins else to_send
 
         # Safety net: snapshot the live layout, and the pins of the last write, before changing anything.
         plistlib.dump(before, open(snap, 'wb'))
@@ -370,9 +434,9 @@ def main(argv):
               + ('' if snap_pins else '  (no record of earlier pins here, so gaps would pack)'))
 
         live = await go(payload, sb)
-        return to_send, live, grid, info
+        return to_send, live, grid, info, all_pins
 
-    to_send, live, grid, info = asyncio.run(run())
+    to_send, live, grid, info, all_pins = asyncio.run(run())
     plistlib.dump(live, open(a.after, 'wb'))
     sa, sl = ids(to_send, Counter()), ids(live, Counter())
     lost, added = list((sa - sl).elements()), list((sl - sa).elements())
@@ -381,7 +445,7 @@ def main(argv):
     ok = not (lost or added)
     proven = set()
     if pins:
-        ok = verify(to_send, live, pins, grid, proven) and ok
+        ok = verify(to_send, live, all_pins, grid, proven) and ok
     if ok:
         # Record the pins now in effect, so the next write's snapshot can restore them.
         open(f'{base}.pins.txt', 'w').write('\n'.join(specs) + '\n')

@@ -34,11 +34,12 @@ python3 -I -B scripts/push.py --check "$D/layouts/2026-11-01-before.plist" "$D/l
   page would overflow 24 slots (`--grid 4x5` for another grid).
 - **`push.py --check`** confirms that no app or widget is lost, added or duplicated (folders are
   reported separately), that every page fits, and that the dock is unchanged. With `--pins` it also
-  validates the pins: real pages and slots, no slot or item twice, nothing left without room, and no
-  widget pushed aside. Pass `--grid 4x5` if `show` reports a grid other than 4×6.
+  validates the pins: real pages and slots, no slot or item twice, nothing left without room, no
+  widget pushed aside, and no pinned widget off the grid or over another pin. Pass `--grid 4x5` if `show` reports a grid other than 4×6.
 - **`push.py`** writes, reads back and compares. It needs exactly one of `--pins FILE` (format:
   `assets/pins.example.txt`), `--pin PAGE:ITEM:SLOT` (repeatable) or `--no-pins`, and prints
-  `pins page N: CONFIRMED`, `FAILED` or `not provable` per pinned page. Before writing it refuses a
+  `pins page N: CONFIRMED`, `FAILED` or `not provable` per pinned page. On each pinned page it also
+  pins every widget where the layout puts it (and says so). Before writing it refuses a
   non-iPhone, an existing AFTER, pins or pages that don't fit the phone's grid, pins on an iOS version
   that hasn't passed both pin tests (unless `--untested-ios-ok`; each confirmed app or folder test is
   then recorded in `$D/tested-ios.txt`), an empty pins file, and any mismatch with the live layout. It saves the live layout as

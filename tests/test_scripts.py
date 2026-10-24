@@ -220,6 +220,59 @@ class Archive(unittest.TestCase):
             rank.BIOME, rank.RAW, rank.DEVICES = old_biome, old_raw, old_devices
 
 
+class WidgetPins(unittest.TestCase):
+    """Widget behaviour seen on an iPhone (iOS 27.0.1), checked with screenshots."""
+
+    def page(self, n=11):
+        return [widget('W1')] + [app(f'com.example.a{i}') for i in range(1, n + 1)] + [app('com.example.z')]
+
+    def test_pinned_widget_covers_all_its_cells(self):
+        # Widget pinned at slot 8 (rows 3-4), one app at 23: the icons fill rows 1-2, then wrap below it.
+        page = self.page()
+        order = push.expected_order(page, {'W1': 8, 'com.example.z': 23})
+        names = [push.name(i) for i in page]
+        self.assertEqual(order, names[1:9] + [names[0]] + names[9:12] + [names[12]])
+
+    def test_unpinned_widget_is_pinned_where_the_layout_puts_it(self):
+        # Pins in rows 5-6 with five unpinned icons: unpinned, the phone put the widget below the icons.
+        st = [[], [widget('W1')] + [app(f'com.example.a{i}') for i in range(1, 13)]]
+        pins = [(1, f'com.example.a{i}', s) for i, s in zip(range(6, 13), (16, 17, 19, 20, 21, 22, 23))]
+        self.assertEqual(push.with_widget_pins(st, pins)[len(pins):], [(1, 'W1', 0)])
+        # The widget listed after one icon: its slot follows the list (row 2), not the top.
+        st[1] = [st[1][1], st[1][0]] + st[1][2:]
+        self.assertEqual(push.with_widget_pins(st, pins)[len(pins):], [(1, 'W1', 4)])
+        self.assertEqual(push.with_widget_pins(st, []), [])   # no pins: nothing added
+
+    def test_widget_pin_is_keyed_by_display_identifier(self):
+        d = push.with_pins(layout(), [(1, 'W1', 0)])
+        (meta,) = d['listMetadata'].values()
+        self.assertEqual(meta['fixedLocations'], {'W1': 0})   # the bundle ID key is ignored by the phone
+
+    def test_widget_pin_by_bundle_id_says_to_use_the_id(self):
+        errors = push.validate_pins(layout(), [(1, 'com.example.weather.widget', 0)])
+        self.assertTrue(any('1:W1:0' in e for e in errors), errors)
+
+    def test_widget_pin_off_grid_or_over_a_pin_is_refused(self):
+        self.assertTrue(any('runs off' in e for e in push.validate_pins(layout(), [(1, 'W1', 1)])))
+        errors = push.validate_pins(layout(), [(1, 'W1', 0), (1, 'com.example.a1', 5)])
+        self.assertTrue(any('overlaps' in e for e in errors), errors)
+        self.assertEqual(push.validate_pins(layout(), [(1, 'W1', 8), (1, 'com.example.a1', 23)]), [])
+
+    def test_two_widgets_from_one_app_get_their_own_slots(self):
+        page = [widget('S1', 'small'), widget('S2', 'small')]
+        self.assertEqual(sorted(push.positions(page, {}).values()), [0, 2])
+
+    def test_confirmed_widget_pin_is_recorded_as_widget(self):
+        st = [[], self.page()]
+        pins = [(1, 'W1', 8), (1, 'com.example.z', 23)]
+        sent = push.pinned_first(st, pins)
+        order = push.expected_order(sent[1], {'W1': 8, 'com.example.z': 23})
+        live = [[], sorted(sent[1], key=lambda i: order.index(push.name(i)))]
+        proven = set()
+        self.assertTrue(push.verify(sent, live, pins, proven=proven))
+        self.assertEqual(proven, {'widget', 'app'})
+
+
 class UsageDecoder(unittest.TestCase):
     def segb(self, events):
         """Build a minimal SEGB v2 file: header, entries, and the end-of-file index read backwards."""

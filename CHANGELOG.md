@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.0
+- Fix: on a page with pins, a widget could land below the unpinned icons instead of where the
+  layout put it, and `push.py` then reported the pins as FAILED. Seen on iOS 27.0.1 with the
+  documented pattern (a widget on top, pins in the bottom rows). `push.py` now pins every widget on
+  a pinned page at the slot the layout gives it, so SpringBoard has nothing left to decide.
+- Widgets can be pinned: `PAGE:<widget ID>:SLOT`, the ID being the part after `#` in
+  `homescreen.py show`. SpringBoard keys widget pins by `displayIdentifier`; the slot is the
+  widget's top-left cell. `--check` refuses a widget pin that runs off the grid or over another pin.
+- The layout simulation counts every cell of a pinned widget, and tells two widgets from one app
+  apart.
+
 ## 1.0.1
 - Fix: `rank.py --archive` no longer overwrites archived usage files. The Mac prunes old days from
   inside the same files it keeps updating, so overwriting lost history; a changed file is now saved

@@ -30,7 +30,9 @@
   a page, so remove apps by hand, as the last step.
 - The scripts don't edit the dock. Change it on the phone, then dump the layout again; the dock
   you send is written back as it was read.
-- Widgets can be kept and moved as items. Adding new widgets and pinning widgets are untested.
+- Widgets can be kept, moved and pinned (by the ID after `#` in `show`). On a page with pins,
+  `push.py` pins each widget where the layout puts it: left unpinned, SpringBoard may move it
+  below unpinned icons. Adding new widgets is untested.
 - Hidden pages and Focus-specific pages are untested: each write sends new page IDs and only the
   layout's main keys, so they may not survive a write. Check them after the first write.
 - Usage time is estimated from app-switch events, and the Mac keeps only about 4 weeks of it. Run

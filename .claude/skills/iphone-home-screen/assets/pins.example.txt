@@ -1,10 +1,11 @@
 # Fixed slots: PAGE:ITEM:SLOT, one per line. Slots are 0-23 on a 4x6 grid, left to right,
-# top to bottom (0 = top-left, 23 = bottom-right). Apps by bundle ID, folders by name.
+# top to bottom (0 = top-left, 23 = bottom-right). Apps by bundle ID, folders by name, widgets
+# by the ID after # in `homescreen.py show` (a widget's slot is its top-left cell).
 # Only items placed after a gap need a pin. Pass the file on every write:
 #   "$D/pmd/bin/python" -B scripts/push.py NEW.plist AFTER.plist --pins "$D/pins.txt"
 #
-# Example page 1: a medium widget fills slots 0-7 (unpinned), row 3 (slots 8-11) unpinned,
-# row 4 left blank, the most-used apps in rows 5-6 just above the dock.
+# Example page 1: a medium widget fills slots 0-7 (push.py pins it there for you), row 3
+# (slots 8-11) unpinned, row 4 left blank, the most-used apps in rows 5-6 just above the dock.
 1:com.example.app5:16
 1:com.example.app6:17
 1:com.example.app7:18
