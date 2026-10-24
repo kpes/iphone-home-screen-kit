@@ -11,11 +11,12 @@
 - `--check` (and `push.py` before writing) refuses a widget that would start on row 2, 4 or 6, from a
   pin or from following an odd number of icon rows: iOS starts widgets only on rows 1, 3 and 5 and
   moved such a widget up a row.
-  Tested with a medium widget on iOS 27.0.1; small and large widgets and Smart Stacks are untested.
 - `homescreen.py show` prints a widget as `<bundle ID>#<ID>`; `arrange.py` takes that, the ID, or
   the bundle ID.
 - The layout simulation counts every cell of a pinned widget, and tells two widgets from one app
   apart.
+
+Tested with a medium widget on iOS 27.0.1; small and large widgets and Smart Stacks are untested.
 
 ## 1.0.1
 - Fix: `rank.py --archive` no longer overwrites archived usage files. The Mac prunes old days from
