@@ -18,7 +18,7 @@
   before every write. The write notes when the server couldn't ask itself, and `get_settings`
   reports which applies.
 - The Claude Code plugin stays skill-only. Claude Code users can add the MCP server themselves
-  (`claude mcp add`, see the README; needs uv on `PATH`).
+  (`claude mcp add`, see DEVELOPING.md; needs uv on `PATH`).
 - Releases from 2.0.0 on carry the CI-built `iphone-home-screen.mcpb` as a release asset.
 - Skill fixes: `push.py` flushes the "saved the layout from before this write" line, so a run that
   is stopped mid-write still says where the snapshot is; `arrange.py --grid` no longer drops an item

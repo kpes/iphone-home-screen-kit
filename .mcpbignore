@@ -9,3 +9,4 @@ __pycache__/
 *.pyc
 CHANGELOG.md
 SECURITY.md
+DEVELOPING.md
