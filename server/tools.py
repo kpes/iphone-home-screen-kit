@@ -16,6 +16,7 @@ import contextlib, datetime, hashlib, json, os, plistlib, re, secrets, subproces
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SKILL = os.path.join(ROOT, '.claude', 'skills', 'iphone-home-screen')
 SCRIPTS = os.path.join(SKILL, 'scripts')
+sys.dont_write_bytecode = True  # like the skill's `python -B`: no __pycache__ inside the installed extension
 sys.path.insert(0, SCRIPTS)
 import push  # noqa: E402  (pure functions; imports pymobiledevice3 only when talking to the phone)
 
