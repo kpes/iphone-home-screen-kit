@@ -270,6 +270,12 @@ class Settings(ToolsTest):
         self.assertIn('"b"', out)
         self.assertIn('page 1: a', out)
 
+    def test_settings_explain_both_tested_ios_lists(self):
+        open(os.path.join(self.home, 'tested-ios.txt'), 'w').write('28.0 app\n28.0 folder\n29.0 app\n')
+        out = tools.get_settings()
+        self.assertIn("tested by the kit's author: 27.0.1", out)
+        self.assertIn('passed both pin tests on this Mac (tested-ios.txt): 28.0', out)
+
     def test_guides(self):
         self.assertIn('Symptom', tools.read_guide('troubleshooting'))
         with self.assertRaises(tools.Refused):

@@ -11,7 +11,7 @@ exact files and pins that passed the offline check, is used once, and expires af
 Files: every layout lives in <data folder>/layouts, and tools take bare file names, never paths.
 New files get dated names and nothing is ever overwritten.
 """
-import contextlib, datetime, hashlib, json, os, plistlib, re, secrets, subprocess, sys, threading, time
+import ast, contextlib, datetime, hashlib, json, os, plistlib, re, secrets, subprocess, sys, threading, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SKILL = os.path.join(ROOT, '.claude', 'skills', 'iphone-home-screen')
@@ -419,12 +419,26 @@ def get_settings():
     specs, src = pins_in_effect()
     parts = [f'Data folder: {d}']
     for label, path in (('config.json (usage ranking settings)', 'config.json'),
-                        ("layout.md (the user's chosen layout and rules)", 'layout.md'),
-                        ('tested-ios.txt (iOS versions that passed the pin tests here)', 'tested-ios.txt')):
+                        ("layout.md (the user's chosen layout and rules)", 'layout.md')):
         text = read_text(os.path.join(d, path))
         parts.append(f'--- {label}:\n' + (text.strip() if text and text.strip() else '(none yet)'))
+    kinds = {}
+    for l in (read_text(os.path.join(d, 'tested-ios.txt')) or '').splitlines():
+        if len(l.split()) == 2:
+            kinds.setdefault(l.split()[0], set()).add(l.split()[1])
+    passed = sorted(v for v, k in kinds.items() if {'app', 'folder'} <= k)
+    parts.append('--- iOS versions where pins are tested (either list counts; show_layout says whether the '
+                 "phone's version is tested):\n"
+                 f"tested by the kit's author: {', '.join(author_tested_ios()) or 'none'}\n"
+                 f"passed both pin tests on this Mac (tested-ios.txt): {', '.join(passed) or 'none'}")
     parts.append('--- pins in effect:\n' + ('\n'.join(specs) + f'\n(from {src})' if specs else '(none recorded)'))
     return '\n\n'.join(parts)
+
+
+def author_tested_ios():
+    """homescreen.TESTED_IOS, read from the script's source (importing it needs pymobiledevice3)."""
+    m = re.search(r'^TESTED_IOS = (\{[^}]*\})', read_text(os.path.join(SCRIPTS, 'homescreen.py')) or '', re.M)
+    return sorted(ast.literal_eval(m[1])) if m else []
 
 
 def save_settings(config=None, layout_notes=None):
