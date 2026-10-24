@@ -36,21 +36,8 @@ project folder: your settings and data live in `~/iphone-home-screen/`, wherever
    downloads its own otherwise. Nothing else to install.
 3. Connect and unlock your iPhone, then say **"show my home screen"** in a new chat.
 
-Before a write, Claude shows you the change and waits for your yes. On top of that:
-- **Claude Desktop's chat:** in **Settings → Extensions → iPhone Home Screen**, set `write_layout` to
-  **Needs approval** (never "Always allow"), and Desktop asks you before every write.
-- **Claude Code** (terminal, or the desktop app's Code tab): Claude Code's own permission mode
-  applies instead. In auto mode, or with an allow rule for these tools, writes run without asking.
-- **The extension's own prompt:** in apps that support MCP elicitation, the server also asks you
-  itself ("Write a new home screen layout to your iPhone?", with the pages that change and the
-  pins) and writes nothing unless you say yes there; Claude can't answer it for you. Claude Desktop
-  3.1623 doesn't support it yet. `get_settings` says which applies.
-
-Whatever the app does, the server refuses a write unless that exact layout and those pins passed the
-offline check in the last 10 minutes (a one-time confirmation token). That token proves the layout
-was checked, not that you agreed. Every write also saves the phone's previous layout first, so it
-can be undone with `restore_snapshot`. Ranking by usage also needs Full Disk Access for the Claude app (see
-Requirements). Settings → Extensions → iPhone Home Screen lets you change the data folder.
+Ranking by usage also needs Full Disk Access for the Claude app (see Requirements). Settings →
+Extensions → iPhone Home Screen lets you change the data folder.
 
 ### Claude Code: terminal, or the Code tab in the Claude desktop app (recommended)
 Install it as a plugin. In Claude Code, run:
