@@ -95,5 +95,5 @@ if __name__ == '__main__':
         except (IndexError, ValueError):
             sys.exit('--grid needs COLSxROWS, e.g. --grid 4x6')
         SLOTS = c * r
-        args = [a for a in args if a not in ('--grid', g)]
+        del args[args.index('--grid'):args.index('--grid') + 2]  # only the flag and its value
     main(*args)

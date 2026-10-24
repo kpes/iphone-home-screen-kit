@@ -20,6 +20,9 @@
 - The Claude Code plugin stays skill-only. Claude Code users can add the MCP server themselves
   (`claude mcp add`, see the README; needs uv on `PATH`).
 - Releases from 2.0.0 on carry the CI-built `iphone-home-screen.mcpb` as a release asset.
+- Skill fixes: `push.py` flushes the "saved the layout from before this write" line, so a run that
+  is stopped mid-write still says where the snapshot is; `arrange.py --grid` no longer drops an item
+  named like the grid value (e.g. a folder named "4x6").
 - Offline tests for the server's tools; CI checks the extension's manifest and packs it.
 
 ## 1.1.0

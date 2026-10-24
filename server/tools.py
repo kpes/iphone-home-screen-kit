@@ -11,7 +11,7 @@ exact files and pins that passed the offline check, is used once, and expires af
 Files: every layout lives in <data folder>/layouts, and tools take bare file names, never paths.
 New files get dated names and nothing is ever overwritten.
 """
-import ast, contextlib, datetime, hashlib, json, os, plistlib, re, secrets, subprocess, sys, threading, time
+import ast, contextlib, datetime, hashlib, json, os, plistlib, re, secrets, subprocess, sys, tempfile, threading, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SKILL = os.path.join(ROOT, '.claude', 'skills', 'iphone-home-screen')
@@ -22,12 +22,24 @@ import push  # noqa: E402  (pure functions; imports pymobiledevice3 only when ta
 
 TOKEN_TTL = 10 * 60  # seconds a confirmation token stays valid
 PENDING = {}         # token -> what check_layout approved
+TOKENS = threading.Lock()  # guards PENDING: tools run in worker threads
 SESSION = {}         # what the last show_layout learned: 'grid' ("4x6"), 'phone'
 PHONE = threading.Lock()  # one phone, one operation at a time
+NAMES = threading.Lock()  # new_path: two calls in the same second must not pick the same name
+RESERVED = set()
+SNAPSHOT_LINE = re.compile(r'^saved the layout from before this write: (.+\.plist)\s*$', re.M)
 
 
 class Refused(Exception):
     """A tool refused, or a script failed: the message says why and what to do."""
+
+
+class TimedOut(Refused):
+    """A script was stopped for taking too long; OUTPUT is what it printed until then."""
+
+    def __init__(self, message, output):
+        super().__init__(message)
+        self.output = output
 
 
 def home_dir():
@@ -64,11 +76,15 @@ def resolve(name, suffix='.plist'):
 
 
 def new_path(label, suffix='.plist'):
-    """A new dated file name in the layouts folder that doesn't exist yet."""
+    """A new dated file name in the layouts folder that doesn't exist yet and that no other call in
+    this server has been given. The scripts that create it refuse to overwrite, so a clash with
+    another process fails instead of overwriting."""
     base = os.path.join(layouts_dir(), f'{stamp()}-{label}')
-    path, n = base + suffix, 2
-    while os.path.exists(path):
-        path, n = f'{base}-{n}{suffix}', n + 1
+    with NAMES:
+        path, n = base + suffix, 2
+        while os.path.exists(path) or path in RESERVED:
+            path, n = f'{base}-{n}{suffix}', n + 1
+        RESERVED.add(path)
     return path
 
 
@@ -82,11 +98,13 @@ def run_script(script, *args, timeout=120):
     server's own stdin and stdout carry the MCP protocol."""
     env = dict(os.environ, IPHONE_HOME_SCREEN_DIR=home_dir())
     try:
-        r = subprocess.run([sys.executable, '-I', '-B', os.path.join(SCRIPTS, script), *args],
+        # -u: unbuffered, so a script stopped by the timeout still shows what it printed.
+        r = subprocess.run([sys.executable, '-I', '-B', '-u', os.path.join(SCRIPTS, script), *args],
                            stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=timeout, env=env)
-    except subprocess.TimeoutExpired:
-        raise Refused(f'{script} took longer than {timeout} s and was stopped. Is the iPhone connected, '
-                      'unlocked and trusted?')
+    except subprocess.TimeoutExpired as e:
+        text = lambda b: (b.decode('utf-8', 'replace') if isinstance(b, bytes) else b or '')
+        raise TimedOut(f'{script} took longer than {timeout} s and was stopped. Is the iPhone connected, '
+                       'unlocked and trusted?', (text(e.stdout) + '\n' + text(e.stderr)).strip())
     return r.returncode, (r.stdout + ('\n' + r.stderr if r.stderr.strip() else '')).strip()
 
 
@@ -237,7 +255,8 @@ def make_folder(base, name, apps, page):
                 it['iconLists'] = [l for l in (take(l) for l in it['iconLists']) if l]
                 if not it['iconLists']:
                     continue
-            elif it.get('bundleIdentifier') in want and it['bundleIdentifier'] not in found:
+            elif (not push.is_widget(it) and it.get('bundleIdentifier') in want
+                  and it['bundleIdentifier'] not in found):
                 found[it['bundleIdentifier']] = it
                 continue
             out.append(it)
@@ -253,7 +272,7 @@ def make_folder(base, name, apps, page):
     st[1:] = [p for p in st[1:] if p]
     page = next(p for p in range(1, len(st)) if any(it.get('displayName') == name and is_folder(it) for it in st[p]))
     out = new_path('folder')
-    with open(out, 'wb') as f:
+    with open(out, 'xb') as f:  # exclusive: never overwrite
         plistlib.dump(st, f)
     return (f'Folder [{name}] with {len(apps)} apps added at the end of page {page}. '
             f'Saved as {os.path.basename(out)}. Next: build_page to place it, or check_layout.')
@@ -279,10 +298,11 @@ def check_layout(base, new, pins=None, no_pins=False, untested_ios_ok=False, gri
     b, n = resolve(base), resolve(new)
     specs = pin_specs(pins, no_pins)
     g = grid_arg(grid)
-    pins_file = new_path('check', '.pins.txt') if specs else None
+    pins_file = None
     try:
-        if pins_file:
-            with open(pins_file, 'w') as f:
+        if specs:  # a hidden temp file of its own, so parallel checks can't share or delete it
+            fd, pins_file = tempfile.mkstemp(prefix='.check-', suffix='.pins.txt', dir=layouts_dir())
+            with os.fdopen(fd, 'w') as f:
                 f.write('\n'.join(specs) + '\n')
         code, out = run_script('push.py', '--check', b, n, '--grid', g, *(['--pins', pins_file] if specs else []))
     finally:
@@ -291,16 +311,24 @@ def check_layout(base, new, pins=None, no_pins=False, untested_ios_ok=False, gri
     if code != 0:
         raise Refused(out + '\n\nNot safe to write: fix the layout (or pins) and check again. No token issued.')
     before, after = load(b), load(n)
-    changed = [p for p in range(1, len(after)) if p >= len(before) or push.names([after[p]]) != push.names([before[p]])]
-    token = secrets.token_hex(4)
-    for t in [t for t, v in PENDING.items() if v['expires'] < time.time()]:
-        del PENDING[t]
-    PENDING[token] = {'base': b, 'new': n, 'base_sha': sha(b), 'new_sha': sha(n), 'pins': specs,
-                      'untested_ios_ok': bool(untested_ios_ok), 'grid': g, 'expires': time.time() + TOKEN_TTL,
-                      'changed': changed, 'pages': len(after) - 1}
     pages_after = len(after) - 1
-    preview = layout_text(after, set(changed)) if changed else '(no page changes; pins only)'
-    return (f'{out}\n\nPages that change ({pages_after} pages in all):\n{preview}\n\n'
+    if b == n:  # a restore: the phone gets every page as saved, whatever it shows now
+        changed = list(range(1, len(after)))
+        preview = (f'Puts back {os.path.basename(n)} on the phone: every page as saved ({pages_after} pages), '
+                   f'with these pins:\n{layout_text(after)}')
+    else:
+        changed = [p for p in range(1, len(after))
+                   if p >= len(before) or push.names([after[p]]) != push.names([before[p]])]
+        preview = (f'Pages that change ({pages_after} pages in all):\n'
+                   + (layout_text(after, set(changed)) if changed else '(no page changes; pins only)'))
+    token = secrets.token_hex(4)
+    with TOKENS:
+        for t in [t for t, v in PENDING.items() if v['expires'] < time.time()]:
+            del PENDING[t]
+        PENDING[token] = {'base': b, 'new': n, 'base_sha': sha(b), 'new_sha': sha(n), 'pins': specs,
+                          'untested_ios_ok': bool(untested_ios_ok), 'grid': g,
+                          'expires': time.time() + TOKEN_TTL, 'changed': changed, 'pages': pages_after}
+    return (f'{out}\n\n{preview}\n\n'
             f"Pins: {', '.join(specs) if specs else 'none (every page packs to the left)'}"
             + ('\nUntested iOS allowed for this write (pin test).' if untested_ios_ok else '') +
             f'\n\nConfirmation token: {token} (valid {TOKEN_TTL // 60} minutes, for this exact layout and these pins).\n'
@@ -308,15 +336,18 @@ def check_layout(base, new, pins=None, no_pins=False, untested_ios_ok=False, gri
 
 
 def write_layout(confirm_token):
-    """Write what check_layout approved (the token-only path; server.py asks the user in between)."""
-    return push_write(take_token(confirm_token))
+    """Write what check_layout approved (the token-only path; server.py asks the user in between).
+    The phone is taken before the token is spent, so a busy phone doesn't use up the token."""
+    with phone():
+        return push_write(take_token(confirm_token))
 
 
 def take_token(confirm_token):
     """The write check_layout approved for this token, used up: even if the write then doesn't happen
     (the user says no), a new check is needed for a new token."""
-    p = peek_token(confirm_token)
-    del PENDING[confirm_token.strip()]
+    with TOKENS:
+        p = peek_token(confirm_token)
+        del PENDING[confirm_token.strip()]
     return p
 
 
@@ -351,15 +382,22 @@ def confirmation(p):
 
 
 def push_write(p):
-    """push.py NEW AFTER with the approved pins; it checks the live layout, writes, reads back and verifies."""
+    """push.py NEW AFTER with the approved pins; it checks the live layout, writes, reads back and verifies.
+    The caller holds the phone (see phone())."""
     unchanged(p)  # again: the user may have taken a while to answer
     after = new_path('after')
     args = [p['new'], after] + ([a for s in p['pins'] for a in ('--pin', s)] if p['pins'] else ['--no-pins'])
     if p['untested_ios_ok']:
         args.append('--untested-ios-ok')
-    with phone():
+    try:
         code, out = run_script('push.py', *args, timeout=180)
-    m = re.search(r'saved the layout from before this write: (\S+\.plist)', out)
+    except TimedOut as e:
+        m = SNAPSHOT_LINE.search(e.output)
+        if not m:  # push.py prints that line (unbuffered) before it writes anything
+            raise Refused(f'{e}\nIt stopped before writing: the phone was not changed.\n\n{e.output}'.rstrip())
+        raise Refused(f'{e}\nIt had already started writing, so the phone MAY have been changed: check it with '
+                      f'show_layout and tell the user.{undo_note(m[1], p["grid"])}\n\n{e.output}')
+    m = SNAPSHOT_LINE.search(out)
     undo = undo_note(m[1], p['grid']) if m else ''
     if code != 0:
         raise Refused(out + undo + '\n\nThe write was refused or did not come back as sent. Read the lines above; '
@@ -368,13 +406,14 @@ def push_write(p):
 
 
 def undo_note(snap, grid):
-    """How to undo a write: restore_snapshot with the snapshot push.py saved, if that would pass the check."""
+    """How to undo a write: restore_snapshot with the snapshot push.py saved, if that would pass the check.
+    Never raises: a note must not turn a write that worked into an error."""
     pf = snap[:-len('.plist')] + '.pins.txt'
     try:
         specs = no_exit(push.read_pins_file, pf) if os.path.exists(pf) else []
         cols, rows = (int(x) for x in grid.split('x'))
         ok = push.compare(load(snap), load(snap), (cols, rows), no_exit(push.parse_pins, specs), quiet=True)
-    except (Refused, OSError, ValueError):
+    except (Exception, SystemExit):  # SystemExit: a script function refusing
         ok = False
     if ok:
         return f'\n\nTo undo this write: restore_snapshot with {os.path.basename(snap)}.'
@@ -479,7 +518,8 @@ def author_tested_ios():
 
 
 def save_settings(config=None, layout_notes=None):
-    """Write config.json and/or layout.md in the data folder; the previous version is kept as *.previous."""
+    """Write config.json and/or layout.md in the data folder; each earlier version is kept as
+    <name>.<time>.previous, never overwritten."""
     if config is None and layout_notes is None:
         raise Refused('nothing to save: pass config and/or layout_notes')
     d = home_dir()
@@ -495,15 +535,28 @@ def save_settings(config=None, layout_notes=None):
         saved.append(_replace(os.path.join(d, 'config.json'), json.dumps(config, indent=2) + '\n'))
     if layout_notes is not None:
         saved.append(_replace(os.path.join(d, 'layout.md'), layout_notes.rstrip() + '\n'))
-    return 'Saved ' + ', '.join(saved) + ' (the previous version, if any, is kept as *.previous).'
+    return 'Saved ' + ', '.join(saved) + '.'
 
 
 def _replace(path, text):
+    """Write PATH atomically, after copying the current version to a new <path>.<time>.previous."""
+    kept = ''
     if os.path.exists(path):
-        os.replace(path, path + '.previous')
-    with open(path, 'w') as f:
-        f.write(text)
-    return path
+        n, backup = 2, f'{path}.{stamp()}.previous'
+        while os.path.exists(backup):
+            backup, n = f'{path}.{stamp()}-{n}.previous', n + 1
+        with open(path, 'rb') as src, open(backup, 'xb') as dst:
+            dst.write(src.read())
+        kept = f' (the previous version is kept as {os.path.basename(backup)})'
+    fd, tmp = tempfile.mkstemp(prefix='.' + os.path.basename(path) + '.', dir=os.path.dirname(path))
+    try:
+        with os.fdopen(fd, 'w') as f:
+            f.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        os.remove(tmp)
+        raise
+    return path + kept
 
 
 GUIDES = {'how-it-works': 'how-it-works.md', 'troubleshooting': 'troubleshooting.md', 'commands': 'commands.md'}

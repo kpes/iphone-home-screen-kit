@@ -162,6 +162,15 @@ async def write_layout(confirm_token: Annotated[str, Field(description='The toke
     dock changed), if it isn't an iPhone, or if pins are used on an untested iOS version. Saves the phone's
     previous layout first, so the write can be undone with restore_snapshot."""
     try:
+        return await anyio.to_thread.run_sync(write_confirmed, confirm_token, answer)
+    except tools.Refused as e:
+        raise ToolError(str(e))
+
+
+def write_confirmed(confirm_token, answer):
+    """write_layout's body, in a worker thread. The phone is taken before the token is spent, so a busy
+    phone doesn't waste the user's yes."""
+    with tools.phone():
         pending = tools.take_token(confirm_token)
         # The framework hands a resolver's plain value over as an accepted answer: data None = not asked.
         # A real answer that was accepted always carries a validated Confirm.
@@ -169,10 +178,7 @@ async def write_layout(confirm_token: Annotated[str, Field(description='The toke
         if asked and not (answer.action == 'accept' and answer.data.write):
             raise tools.Refused('the user did not confirm the write in the app, so nothing was written. '
                                 'Ask what they want to change; a new write needs check_layout again.')
-        notice = '' if asked else NO_PROMPT
-        return notice + await anyio.to_thread.run_sync(tools.push_write, pending)
-    except tools.Refused as e:
-        raise ToolError(str(e))
+        return ('' if asked else NO_PROMPT) + tools.push_write(pending)
 
 
 def can_ask(ctx):
@@ -233,7 +239,8 @@ def get_settings(ctx: Context) -> str:
 @tool(LOCAL, 'Save settings')
 def save_settings(config: Annotated[Optional[dict], Field(description='Whole config.json: devices {id: label}, dock [bundle IDs], exclude [bundle IDs], exclude_genres [names], store_country ("us")')] = None,
                   layout_notes: Annotated[Optional[str], Field(description="Whole layout.md: the user's layout by page and row, widgets kept, rules, and their pins")] = None) -> str:
-    """Save config.json and/or layout.md in the data folder (replacing them; the previous version is kept)."""
+    """Save config.json and/or layout.md in the data folder. Each earlier version is kept as a dated
+    <name>.<time>.previous file, never overwritten."""
     return tools.save_settings(config, layout_notes)
 
 

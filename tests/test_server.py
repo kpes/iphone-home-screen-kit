@@ -81,6 +81,10 @@ class Files(ToolsTest):
             self.assertEqual(tools.home_dir(), want, value)
         os.environ['IPHONE_HOME_SCREEN_DIR'] = self.home
 
+    def test_new_names_are_never_handed_out_twice(self):
+        # Two calls in the same second, before either file exists, still get different names.
+        self.assertNotEqual(tools.new_path('x'), tools.new_path('x'))
+
     def test_new_files_never_overwrite(self):
         a, b = tools.new_path('x'), None
         open(a, 'w').close()
@@ -109,6 +113,18 @@ class Building(ToolsTest):
         tools_folder = next(i for i in new[1] if i.get('displayName') == 'Tools')
         self.assertEqual([a['bundleIdentifier'] for a in tools_folder['iconLists'][0]], ['com.example.t2'])
         self.assertIn('OK: safe to push', tools.check_layout('base.plist', self.created(out), no_pins=True))
+
+    def test_make_folder_never_takes_a_widget(self):
+        with self.assertRaises(tools.Refused):
+            tools.make_folder('base.plist', 'Weather', ['com.example.weather.widget'], 2)
+        self.assertEqual(len([f for f in os.listdir(self.layouts) if 'folder' in f]), 0)
+
+    def test_build_page_keeps_an_item_named_like_the_grid(self):
+        st = layout(); st[2].append(folder('4x6', [app('com.example.z1')]))
+        self.save('grid-named.plist', st)
+        out = tools.build_page('grid-named.plist', 2, ['4x6', 'com.example.b1', 'com.example.b2', 'com.example.b3'],
+                               grid='4x6')
+        self.assertEqual(self.load(self.created(out))[2][0]['displayName'], '4x6')
 
     def test_make_folder_refusals(self):
         for args in (('Tools', ['com.example.b1'], 2), ('New', ['com.example.zz'], 2), ('New', ['com.example.b1'], 0)):
@@ -211,6 +227,64 @@ class Writing(ToolsTest):
         self.assertIn('rebuild the changed pages', out)
 
 
+    def timed_out(self, output):
+        def run(script, *args, timeout=120):
+            if args[:1] == ('--check',):
+                return self.real_run(script, *args, timeout=timeout)
+            raise tools.TimedOut('push.py took longer than 180 s and was stopped.', output)
+        tools.run_script = run
+
+    def test_a_write_stopped_after_its_snapshot_may_have_changed_the_phone(self):
+        t = self.checked(pins=PINS)
+        self.save('s.autosave-before-9.plist', layout())
+        self.timed_out('phone: iPhone\nsaved the layout from before this write: '
+                       + os.path.join(self.layouts, 's.autosave-before-9.plist') + '\n  to restore: ...')
+        with self.assertRaises(tools.Refused) as e:
+            tools.write_layout(t)
+        self.assertIn('MAY have been changed', str(e.exception))
+        self.assertIn('s.autosave-before-9.plist', str(e.exception))
+
+    def test_a_write_stopped_before_its_snapshot_changed_nothing(self):
+        t = self.checked(pins=PINS)
+        self.timed_out('phone: iPhone')
+        with self.assertRaises(tools.Refused) as e:
+            tools.write_layout(t)
+        self.assertIn('the phone was not changed', str(e.exception))
+
+    def test_a_snapshot_path_with_spaces_gets_its_undo(self):
+        t = self.checked(pins=PINS)
+        self.fake_phone(snapshot='y after.autosave-before-1.plist')
+        self.assertIn('restore_snapshot with y after.autosave-before-1.plist', tools.write_layout(t))
+
+    def test_the_undo_note_never_raises(self):
+        for snap, grid in (('/nonexistent/x.plist', '4x6'), (os.path.join(self.layouts, 'base.plist'), 'bad')):
+            self.assertIn('x.plist' if 'nonexistent' in snap else 'base.plist', tools.undo_note(snap, grid))
+
+    def test_a_busy_phone_does_not_spend_the_token(self):
+        t = self.checked(pins=PINS)
+        with tools.PHONE:
+            with self.assertRaises(tools.Refused) as e:
+                tools.write_layout(t)
+        self.assertIn('another phone operation', str(e.exception))
+        self.assertIn(t, tools.PENDING)
+        tools.write_layout(t)
+        self.assertEqual(len(self.calls), 1)
+
+
+class RunScript(unittest.TestCase):
+    def test_a_stopped_script_still_shows_what_it_printed(self):
+        # Unbuffered output: what a script printed before the timeout must not be lost.
+        d = tempfile.mkdtemp()
+        open(os.path.join(d, 'slow.py'), 'w').write('import time\nprint("saved the layout from before this write: x.plist")\ntime.sleep(30)\n')
+        scripts, tools.SCRIPTS = tools.SCRIPTS, d
+        try:
+            with self.assertRaises(tools.TimedOut) as e:
+                tools.run_script('slow.py', timeout=2)
+        finally:
+            tools.SCRIPTS = scripts
+        self.assertIn('saved the layout from before this write: x.plist', e.exception.output)
+
+
 class Restoring(ToolsTest):
     def test_restore_uses_the_snapshots_own_pins(self):
         self.save('s.autosave-before-1.plist', layout())
@@ -219,6 +293,12 @@ class Restoring(ToolsTest):
         out = tools.restore_snapshot('s.autosave-before-1.plist')
         tools.write_layout(self.token(out))
         self.assertEqual(self.calls[0][3:], ('--pin', PINS[0], '--pin', PINS[1]))
+
+    def test_restore_preview_shows_every_page(self):
+        out = tools.restore_snapshot('base.plist')
+        self.assertIn('Puts back base.plist on the phone: every page as saved (2 pages)', out)
+        self.assertIn('page 2 (3 items', out)
+        self.assertNotIn('pins only', out)
 
     def test_restore_without_pins_says_gaps_close(self):
         self.fake_phone()
@@ -265,9 +345,14 @@ class Settings(ToolsTest):
             tools.save_settings({'devises': {}})
         tools.save_settings({'dock': ['a']}, 'page 1: a')
         tools.save_settings({'dock': ['b']})
-        self.assertIn('"a"', open(os.path.join(self.home, 'config.json.previous')).read())
+        out = tools.save_settings({'dock': ['c']})
+        self.assertIn('previous version is kept as config.json.', out)
+        kept = sorted(f for f in os.listdir(self.home) if f.startswith('config.json.') and f.endswith('.previous'))
+        self.assertEqual(len(kept), 2)   # every earlier version, none overwritten
+        self.assertEqual(sorted(open(os.path.join(self.home, f)).read().count('"a"') for f in kept), [0, 1])
+        self.assertEqual([f for f in os.listdir(self.home) if f.startswith('.')], [])   # no temp files left
         out = tools.get_settings()
-        self.assertIn('"b"', out)
+        self.assertIn('"c"', out)
         self.assertIn('page 1: a', out)
 
     def test_settings_explain_both_tested_ios_lists(self):
